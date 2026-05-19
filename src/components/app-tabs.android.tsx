@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Tabs } from "expo-router";
-import { Pressable, View } from "react-native";
+import { Pressable, View, useColorScheme } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,8 +9,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const ACTIVE_COLOR = "#3B82F6";
-const INACTIVE_COLOR = "#9CA3AF";
+import { Colors } from "@/constants/theme"; // adjust path if needed
+
 const SPRING = { damping: 18, stiffness: 200, mass: 0.8 };
 
 type TabConfig = {
@@ -45,10 +45,12 @@ function TabItem({
   config,
   isFocused,
   onPress,
+  colors,
 }: {
   config: TabConfig;
   isFocused: boolean;
   onPress: () => void;
+  colors: typeof Colors.light;
 }) {
   const scale = useSharedValue(1);
 
@@ -77,14 +79,18 @@ function TabItem({
     >
       <Animated.View style={animatedStyle}>
         <View
-          className={`items-center justify-center px-5 py-4 gap-0.5 ${
-            isFocused ? "bg-blue-50" : "bg-transparent"
-          }`}
+          className="items-center justify-center px-5 py-4 gap-0.5"
+          style={{
+            backgroundColor: isFocused
+              ? colors.backgroundSelected
+              : "transparent",
+            borderRadius: 999,
+          }}
         >
           <Ionicons
             name={isFocused ? config.activeIcon : config.inactiveIcon}
             size={28}
-            color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR}
+            color={isFocused ? "#3B82F6" : colors.textSecondary}
           />
         </View>
       </Animated.View>
@@ -95,6 +101,9 @@ function TabItem({
 function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
+  const scheme = useColorScheme();
+  const colors = scheme === "dark" ? Colors.dark : Colors.light;
+
   return (
     <View
       className="absolute left-0 right-0 items-center justify-center"
@@ -102,17 +111,24 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       pointerEvents="box-none"
     >
       <View
-        className="flex-row items-center self-center bg-white rounded-full px-1 py-1 gap-1"
+        className="flex-row items-center self-center rounded-full px-1 py-1 gap-1"
         style={{
-          shadowColor: "#000",
+          backgroundColor: colors.backgroundElement,
+
+          shadowColor: scheme === "dark" ? "#000" : "#000",
+
           shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.1,
+
+          shadowOpacity: scheme === "dark" ? 0.35 : 0.1,
+
           shadowRadius: 24,
+
           elevation: 16,
         }}
       >
         {state.routes.map((route, index) => {
           const config = TABS.find((t) => t.name === route.name);
+
           if (!config) return null;
 
           return (
@@ -120,12 +136,14 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               key={route.key}
               config={config}
               isFocused={state.index === index}
+              colors={colors}
               onPress={() => {
                 const event = navigation.emit({
                   type: "tabPress",
                   target: route.key,
                   canPreventDefault: true,
                 });
+
                 if (!event.defaultPrevented) {
                   navigation.navigate(route.name);
                 }
@@ -142,7 +160,9 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+      }}
     >
       {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} />

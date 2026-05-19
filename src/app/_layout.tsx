@@ -3,19 +3,47 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import React from "react";
-import { useColorScheme } from "react-native";
+import { Slot, useRouter, useSegments } from "expo-router";
+import React, { useEffect } from "react";
+import { ActivityIndicator, useColorScheme, View } from "react-native";
 import "../global.css";
 
-import { AnimatedSplashOverlay } from "@/components/animated-icon";
-import AppTabs from "@/components/app-tabs";
+import { useAuth } from "@/hooks/useAuth";
 
-export default function TabLayout() {
+function AuthGate() {
+  const { session, initializing } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (initializing) return;
+
+    const inAuthGroup = segments[0] === "auth";
+
+    if (!session && !inAuthGroup) {
+      router.replace("/auth");
+    } else if (session && inAuthGroup) {
+      router.replace("/");
+    }
+  }, [session, initializing, segments]);
+
+  if (initializing) {
+    return (
+      <View className="flex-1 bg-neutral-950 items-center justify-center">
+        <ActivityIndicator color="#6366f1" size="large" />
+      </View>
+    );
+  }
+
+  return <Slot />;
+}
+
+export default function RootLayout() {
   const colorScheme = useColorScheme();
+
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+      <AuthGate />
     </ThemeProvider>
   );
 }
