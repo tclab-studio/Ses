@@ -2,7 +2,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useAuthStore, useProfileStore } from "@/stores";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Image,
   Platform,
@@ -20,14 +20,18 @@ export type SesItem = {
   created_by: string;
   option_count: number;
   vote_count: number;
-  selected_option_ids: string[];
+  selected_option_ids: string[] | null | undefined; 
   has_voted: boolean;
-  options: { id: string; text: string }[];
+  options: { id: string; text: string }[] | null | undefined; 
   author: { username: string | null; avatar_url: string | null } | null;
 };
 
 const formatDate = (iso: string) => {
-  const diff = Date.now() - new Date(iso).getTime();
+  if (!iso) return "unknown";
+  const timestamp = new Date(iso).getTime();
+  if (isNaN(timestamp)) return "unknown";
+
+  const diff = Date.now() - timestamp;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m`;
@@ -36,10 +40,48 @@ const formatDate = (iso: string) => {
   return `${Math.floor(hrs / 24)}d`;
 };
 
-export function SesCard({ item }: { item: SesItem }) {
+// Pure content layout extracted out of render sequence to isolate item tree
+const OptionRow = React.memo(({ opt, isSelected, hasVoted }: { opt: { id: string; text: string }; isSelected: boolean; hasVoted: boolean }) => (
+  <Pressable
+    className={`flex-row items-center justify-between px-4 py-3.5 rounded-2xl transition-all ${
+      isSelected
+        ? "bg-neutral-900 dark:bg-white"
+        : "bg-neutral-50 dark:bg-neutral-850 active:bg-neutral-100 dark:active:bg-neutral-800"
+    }`}
+  >
+    <Text
+      className={`text-sm font-medium flex-1 pr-4 ${
+        isSelected
+          ? "text-white dark:text-black font-semibold"
+          : "text-neutral-800 dark:text-neutral-200"
+      }`}
+      numberOfLines={2}
+    >
+      {opt.text}
+    </Text>
+
+    {isSelected && (
+      <Ionicons
+        name="checkmark-circle"
+        size={18}
+        color={
+          hasVoted
+            ? "#10b981"
+            : Platform.OS === "ios"
+              ? "#fff"
+              : "#000"
+        }
+      />
+    )}
+  </Pressable>
+));
+OptionRow.displayName = "OptionRow";
+
+export const SesCard = React.memo(({ item }: { item: SesItem }) => {
   const router = useRouter();
-  const { session } = useAuthStore();
-  const { isBookmarked, toggleBookmark } = useProfileStore();
+  const sessionUserId = useAuthStore((s) => s.session?.user?.id);
+  const isBookmarked = useProfileStore((s) => s.isBookmarked);
+  const toggleBookmark = useProfileStore((s) => s.toggleBookmark);
 
   const bookmarked = isBookmarked(item.id);
   const displayName = item.author?.username ?? "Anonymous";
@@ -47,12 +89,28 @@ export function SesCard({ item }: { item: SesItem }) {
   const initial = displayName.charAt(0).toUpperCase();
 
   const handleBookmarkPress = () => {
-    if (!session?.user?.id) {
+    if (!sessionUserId) {
       alert("Please sign in to save bookmarks");
       return;
     }
-    toggleBookmark(session.user.id, item.id);
+    toggleBookmark(sessionUserId, item.id);
   };
+
+  // Heavy array extraction wrapped inside useMemo parameters 
+  const renderedOptions = useMemo(() => {
+    const safeOptions = item?.options ?? [];
+    const safeSelectedIds = item?.selected_option_ids ?? [];
+    return safeOptions.slice(0, 3).map((opt) => (
+      <OptionRow 
+        key={opt.id} 
+        opt={opt} 
+        isSelected={safeSelectedIds.includes(opt.id)} 
+        hasVoted={item.has_voted} 
+      />
+    ));
+  }, [item?.options, item?.selected_option_ids, item.has_voted]);
+
+  const displayTime = useMemo(() => formatDate(item.created_at), [item.created_at]);
 
   return (
     <View className="bg-white dark:bg-neutral-900 rounded-3xl p-5 mb-1 shadow-sm shadow-black/[0.03]">
@@ -70,12 +128,8 @@ export function SesCard({ item }: { item: SesItem }) {
           <Text className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
             {displayName}
           </Text>
-          <Text className="text-xs text-neutral-300 dark:text-neutral-600">
-            •
-          </Text>
-          <Text className="text-xs text-neutral-400 dark:text-neutral-500">
-            {formatDate(item.created_at)}
-          </Text>
+          <Text className="text-xs text-neutral-300 dark:text-neutral-600">•</Text>
+          <Text className="text-xs text-neutral-400 dark:text-neutral-500">{displayTime}</Text>
         </View>
 
         <View className="flex-row items-center gap-1.5">
@@ -105,45 +159,7 @@ export function SesCard({ item }: { item: SesItem }) {
       </TouchableOpacity>
 
       <View className="gap-2 mb-4">
-        {item.options.slice(0, 3).map((opt) => {
-          const isSelected = item.selected_option_ids.includes(opt.id);
-
-          return (
-            <Pressable
-              key={opt.id}
-              className={`flex-row items-center justify-between px-4 py-3.5 rounded-2xl transition-all ${
-                isSelected
-                  ? "bg-neutral-900 dark:bg-white"
-                  : "bg-neutral-50 dark:bg-neutral-850 active:bg-neutral-100 dark:active:bg-neutral-800"
-              }`}
-            >
-              <Text
-                className={`text-sm font-medium flex-1 pr-4 ${
-                  isSelected
-                    ? "text-white dark:text-black font-semibold"
-                    : "text-neutral-800 dark:text-neutral-200"
-                }`}
-                numberOfLines={2}
-              >
-                {opt.text}
-              </Text>
-
-              {isSelected && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={18}
-                  color={
-                    item.has_voted
-                      ? "#10b981"
-                      : Platform.OS === "ios"
-                        ? "#fff"
-                        : "#000"
-                  }
-                />
-              )}
-            </Pressable>
-          );
-        })}
+        {renderedOptions}
 
         {item.option_count > 3 && (
           <Text className="text-xs font-medium text-neutral-400 dark:text-neutral-500 pl-1 mt-0.5">
@@ -170,15 +186,20 @@ export function SesCard({ item }: { item: SesItem }) {
             size={16}
             color={bookmarked ? "#f59e0b" : "#9ca3af"}
           />
-          <Text
-            className={`text-xs font-medium ${
-              bookmarked ? "text-amber-500" : "text-neutral-400"
-            }`}
-          >
+          <Text className={`text-xs font-medium ${bookmarked ? "text-amber-500" : "text-neutral-400"}`}>
             {bookmarked ? "Saved" : "Save"}
           </Text>
         </TouchableOpacity>
       </View>
     </View>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.vote_count === next.item.vote_count &&
+    prev.item.has_voted === next.item.has_voted &&
+    prev.item.selected_option_ids?.length === next.item.selected_option_ids?.length
+  );
+});
+
+SesCard.displayName = "SesCard";

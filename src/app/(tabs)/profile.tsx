@@ -6,6 +6,7 @@ import { useProfileStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -22,8 +23,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Profile() {
+  const router = useRouter();
   const { session, signOut } = useAuth();
-  const { bookmarkedIds, fetchBookmarks } = useProfileStore();
+  const { fetchBookmarks } = useProfileStore();
 
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -31,9 +33,10 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
-  // FIX: real stat counters (was hardcoded 0)
-  const [createdCount, setCreatedCount] = useState(0);
-  const [votedCount, setVotedCount] = useState(0);
+
+  // Stats State
+  const [stats, setStats] = useState({ published: 0, voted: 0, saved: 0 });
+  const [loadingStats, setLoadingStats] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
@@ -55,38 +58,53 @@ export default function Profile() {
     ]).start();
 
     if (session?.user) {
-      loadProfile();
+      loadProfileAndStats();
       fetchBookmarks(session.user.id);
-      loadStats(session.user.id);
     }
   }, [session]);
 
-  // FIX: fetch real created/voted counts from Supabase
-  const loadStats = async (userId: string) => {
-    const [createdRes, votedRes] = await Promise.all([
-      supabase
-        .from("ses")
-        .select("id", { count: "exact", head: true })
-        .eq("created_by", userId),
-      supabase
-        .from("ses_votes")
-        .select("ses_id", { count: "exact", head: true })
-        .eq("user_id", userId),
-    ]);
-    if (createdRes.count != null) setCreatedCount(createdRes.count);
-    if (votedRes.count != null) setVotedCount(votedRes.count);
-  };
+  const loadProfileAndStats = async () => {
+    if (!session?.user?.id) return;
+    setLoadingStats(true);
 
-  const loadProfile = async () => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("username, avatar_url")
-      .eq("id", session!.user.id)
-      .single();
+    try {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("username, avatar_url")
+        .eq("id", session.user.id)
+        .single();
 
-    if (data) {
-      setUsername(data.username ?? "");
-      setAvatarUrl(data.avatar_url ?? null);
+      if (profileData) {
+        setUsername(profileData.username ?? "");
+        setAvatarUrl(profileData.avatar_url ?? null);
+      }
+
+      const [publishedRes, votedRes, savedRes] = await Promise.all([
+        supabase
+          .from("ses")
+          .select("*", { count: "exact", head: true })
+          .eq("created_by", session.user.id),
+
+        supabase
+          .from("votes")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", session.user.id),
+
+        supabase
+          .from("bookmarks")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", session.user.id),
+      ]);
+
+      setStats({
+        published: publishedRes.count || 0,
+        voted: votedRes.count || 0,
+        saved: savedRes.count || 0,
+      });
+    } catch (error) {
+      console.error("Error loading profile metrics:", error);
+    } finally {
+      setLoadingStats(false);
     }
   };
 
@@ -177,6 +195,8 @@ export default function Profile() {
   const email = session?.user?.email ?? "";
   const initial = displayName.charAt(0).toUpperCase();
 
+  const userSegment = username.trim() || session?.user?.id || "profile";
+
   return (
     <ThemedView className="flex-1">
       <SafeAreaView className="flex-1 w-full" edges={["top", "left", "right"]}>
@@ -201,6 +221,7 @@ export default function Profile() {
                 gap: 24,
               }}
             >
+              {/* Profile Card */}
               <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl p-5 border border-neutral-200 dark:border-neutral-800">
                 <View className="flex-row items-center gap-4">
                   <Animated.View
@@ -294,42 +315,65 @@ export default function Profile() {
                 </View>
               </View>
 
-              {/* FIX: show real fetched counts */}
               <View className="flex-row gap-3">
-                <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">{createdCount}</ThemedText>
-                  <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
-                    Created
+                <Pressable
+                  onPress={() => router.push(`/${userSegment}/sess` as any)}
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:scale-[0.98] active:opacity-90 transition-all"
+                >
+                  <Ionicons
+                    name="paper-plane-outline"
+                    size={16}
+                    color="#9ca3af"
+                    className="mb-1"
+                  />
+                  {loadingStats ? (
+                    <ActivityIndicator size="small" color="#9ca3af" />
+                  ) : (
+                    <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
+                      {stats.published}
+                    </ThemedText>
+                  )}
+                  <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
+                    Publishes
                   </ThemedText>
-                </View>
-                <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">{votedCount}</ThemedText>
-                  <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
-                    Voted
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push(`/${userSegment}/votes` as any)}
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:scale-[0.98] active:opacity-90 transition-all"
+                >
+                  <Ionicons
+                    name="checkmark-done-outline"
+                    size={16}
+                    color="#9ca3af"
+                    className="mb-1"
+                  />
+                  {loadingStats ? (
+                    <ActivityIndicator size="small" color="#9ca3af" />
+                  ) : (
+                    <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
+                      {stats.voted}
+                    </ThemedText>
+                  )}
+                  <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
+                    Votes
                   </ThemedText>
-                </View>
-                <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">
-                    {bookmarkedIds.size}
-                  </ThemedText>
-                  <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
-                    Saved
-                  </ThemedText>
-                </View>
+                </Pressable>
               </View>
 
               <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
                 <Pressable
-                  onPress={() => setShowBookmarks(!showBookmarks)}
+                  onPress={() =>
+                    router.push(`/${userSegment}/bookmarks` as any)
+                  }
                   className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
                   <View className="flex-row items-center gap-3">
-                    {/* FIX: "yellow" is not a valid RN color — use hex */}
-                    <View className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 items-center justify-center">
+                    <View className="w-8 h-8 rounded-full bg-black dark:bg-white items-center justify-center">
                       <Ionicons
                         name="bookmark"
                         size={14}
-                        color="#f59e0b"
+                        color={Platform.OS === "ios" ? "white" : "black"}
                       />
                     </View>
                     <ThemedText className="text-base font-medium">
@@ -360,7 +404,7 @@ export default function Profile() {
               </View>
 
               {showBookmarks && session?.user?.id && (
-                <View className="mt-2 animate-fade-in">
+                <View className="mt-2">
                   <View className="mb-3 px-1">
                     <ThemedText className="text-sm font-bold uppercase tracking-wider text-neutral-400">
                       Saved Content
