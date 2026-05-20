@@ -1,6 +1,8 @@
+import { ProfileBookmarks } from "@/components/profile-bookmarks";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfileStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -21,12 +23,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Profile() {
   const { session, signOut } = useAuth();
+  const { bookmarkedIds, fetchBookmarks } = useProfileStore();
 
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  // FIX: real stat counters (was hardcoded 0)
+  const [createdCount, setCreatedCount] = useState(0);
+  const [votedCount, setVotedCount] = useState(0);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
@@ -47,8 +54,28 @@ export default function Profile() {
       }),
     ]).start();
 
-    if (session?.user) loadProfile();
+    if (session?.user) {
+      loadProfile();
+      fetchBookmarks(session.user.id);
+      loadStats(session.user.id);
+    }
   }, [session]);
+
+  // FIX: fetch real created/voted counts from Supabase
+  const loadStats = async (userId: string) => {
+    const [createdRes, votedRes] = await Promise.all([
+      supabase
+        .from("ses")
+        .select("id", { count: "exact", head: true })
+        .eq("created_by", userId),
+      supabase
+        .from("ses_votes")
+        .select("ses_id", { count: "exact", head: true })
+        .eq("user_id", userId),
+    ]);
+    if (createdRes.count != null) setCreatedCount(createdRes.count);
+    if (votedRes.count != null) setVotedCount(votedRes.count);
+  };
 
   const loadProfile = async () => {
     const { data } = await supabase
@@ -267,21 +294,24 @@ export default function Profile() {
                 </View>
               </View>
 
+              {/* FIX: show real fetched counts */}
               <View className="flex-row gap-3">
                 <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">0</ThemedText>
+                  <ThemedText className="text-2xl font-bold">{createdCount}</ThemedText>
                   <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
                     Created
                   </ThemedText>
                 </View>
                 <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">0</ThemedText>
+                  <ThemedText className="text-2xl font-bold">{votedCount}</ThemedText>
                   <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
                     Voted
                   </ThemedText>
                 </View>
                 <View className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                  <ThemedText className="text-2xl font-bold">0</ThemedText>
+                  <ThemedText className="text-2xl font-bold">
+                    {bookmarkedIds.size}
+                  </ThemedText>
                   <ThemedText className="text-xs text-neutral-500 font-medium mt-1">
                     Saved
                   </ThemedText>
@@ -289,20 +319,28 @@ export default function Profile() {
               </View>
 
               <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
-                <Pressable className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70">
+                <Pressable
+                  onPress={() => setShowBookmarks(!showBookmarks)}
+                  className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                >
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 rounded-full bg-black dark:bg-white items-center justify-center">
+                    {/* FIX: "yellow" is not a valid RN color — use hex */}
+                    <View className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 items-center justify-center">
                       <Ionicons
                         name="bookmark"
                         size={14}
-                        color={Platform.OS === "ios" ? "white" : "black"}
+                        color="#f59e0b"
                       />
                     </View>
                     <ThemedText className="text-base font-medium">
                       My Bookmarks
                     </ThemedText>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <Ionicons
+                    name={showBookmarks ? "chevron-down" : "chevron-forward"}
+                    size={20}
+                    color="#9ca3af"
+                  />
                 </Pressable>
 
                 <Pressable
@@ -320,6 +358,17 @@ export default function Profile() {
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </Pressable>
               </View>
+
+              {showBookmarks && session?.user?.id && (
+                <View className="mt-2 animate-fade-in">
+                  <View className="mb-3 px-1">
+                    <ThemedText className="text-sm font-bold uppercase tracking-wider text-neutral-400">
+                      Saved Content
+                    </ThemedText>
+                  </View>
+                  <ProfileBookmarks userId={session.user.id} />
+                </View>
+              )}
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
