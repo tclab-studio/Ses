@@ -6,7 +6,7 @@ import {
   MaxContentWidth,
   Spacing,
 } from "@/constants/theme";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore, useFeedStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
@@ -20,7 +20,6 @@ import {
   ScrollView,
   Text,
   TextInput,
-  TouchableOpacity,
   useColorScheme,
   View,
 } from "react-native";
@@ -32,7 +31,8 @@ const MAX_OPTIONS = 10;
 const MIN_OPTIONS = 2;
 
 export default function Create() {
-  const { session } = useAuth();
+  const { session } = useAuthStore();
+  const { invalidate, prependItem } = useFeedStore();
   const router = useRouter();
   const scheme = useColorScheme();
   const colors = Colors[scheme === "dark" ? "dark" : "light"];
@@ -135,6 +135,7 @@ export default function Create() {
       setQuestion("");
       setOptions(["", ""]);
       setVoteType("single");
+      invalidate();
 
       Alert.alert("Ses created!", "Your vote is live.", [
         {
@@ -209,7 +210,7 @@ export default function Create() {
                   <Pressable
                     key={type}
                     onPress={() => setVoteType(type)}
-                    className={`flex-1 py-3 rounded-xl items-center border ${
+                    className={`flex-1 py-3 rounded-xl items-center border active:opacity-90 ${
                       voteType === type
                         ? "bg-black dark:bg-white border-black dark:border-white"
                         : "bg-transparent border-neutral-200 dark:border-neutral-800"
@@ -258,25 +259,23 @@ export default function Create() {
                     />
 
                     {options.length > MIN_OPTIONS && (
-                      <TouchableOpacity
+                      <Pressable
                         onPress={() => removeOption(index)}
-                        className="w-8 h-8 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-900"
-                        activeOpacity={0.7}
+                        className="w-8 h-8 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-900 active:opacity-70"
                       >
                         <ThemedText className="text-neutral-400 text-base leading-none">
                           ×
                         </ThemedText>
-                      </TouchableOpacity>
+                      </Pressable>
                     )}
                   </View>
                 ))}
               </View>
 
               {options.length < MAX_OPTIONS && (
-                <TouchableOpacity
+                <Pressable
                   onPress={addOption}
-                  activeOpacity={0.7}
-                  className="flex-row items-center gap-2 py-3 px-4 border border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl"
+                  className="flex-row items-center gap-2 py-3 px-4 border border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl active:opacity-70"
                 >
                   <ThemedText className="text-neutral-400 text-lg leading-none">
                     +
@@ -284,15 +283,14 @@ export default function Create() {
                   <ThemedText className="text-sm text-neutral-400">
                     Add option
                   </ThemedText>
-                </TouchableOpacity>
+                </Pressable>
               )}
             </View>
 
-            <TouchableOpacity
+            <Pressable
               onPress={handleSubmit}
               disabled={!isReady || submitting}
-              activeOpacity={0.85}
-              className={`py-4 rounded-2xl items-center ${
+              className={`py-4 rounded-2xl items-center active:opacity-90 ${
                 isReady && !submitting
                   ? "bg-black dark:bg-white"
                   : "bg-neutral-200 dark:bg-neutral-800"
@@ -312,7 +310,7 @@ export default function Create() {
                   Launch Ses
                 </Text>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

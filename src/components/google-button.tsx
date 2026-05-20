@@ -1,10 +1,5 @@
 import React, { useRef } from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  Text,
-  TouchableOpacity,
-} from "react-native";
+import { ActivityIndicator, Animated, Pressable, Text } from "react-native";
 import { G, Path, Svg } from "react-native-svg";
 
 interface GoogleButtonProps {
@@ -65,7 +60,7 @@ export function GoogleButton({ onPress, loading }: GoogleButtonProps) {
     <Animated.View
       style={{ transform: [{ scale: scaleAnim }], opacity: opacityAnim }}
     >
-      <TouchableOpacity
+      <Pressable
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -88,7 +83,7 @@ export function GoogleButton({ onPress, loading }: GoogleButtonProps) {
         <Text className="text-neutral-800 font-semibold text-base tracking-wide">
           {loading ? "Signing you in..." : "Continue with Google"}
         </Text>
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   );
 }
