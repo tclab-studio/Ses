@@ -2,12 +2,12 @@ import { ProfileBookmarks } from "@/components/profile-bookmarks";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfileStore } from "@/stores";
+import { useProfileStore, useUserActivityStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,7 @@ export default function Profile() {
   const router = useRouter();
   const { session, signOut } = useAuth();
   const { fetchBookmarks } = useProfileStore();
+  const { fetchBookmarkedSess } = useUserActivityStore();
 
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -34,7 +35,6 @@ export default function Profile() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
 
-  // Stats State
   const [stats, setStats] = useState({ published: 0, voted: 0, saved: 0 });
   const [loadingStats, setLoadingStats] = useState(true);
 
@@ -42,26 +42,29 @@ export default function Profile() {
   const slideAnim = useRef(new Animated.Value(24)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 80,
-        friction: 12,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  useFocusEffect(
+    React.useCallback(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 80,
+          friction: 12,
+          useNativeDriver: true,
+        }),
+      ]).start();
 
-    if (session?.user) {
-      loadProfileAndStats();
-      fetchBookmarks(session.user.id);
-    }
-  }, [session]);
+      if (session?.user) {
+        loadProfileAndStats();
+        fetchBookmarks(session.user.id);
+        fetchBookmarkedSess(session.user.id);
+      }
+    }, [session]),
+  );
 
   const loadProfileAndStats = async () => {
     if (!session?.user?.id) return;
@@ -86,7 +89,7 @@ export default function Profile() {
           .eq("created_by", session.user.id),
 
         supabase
-          .from("votes")
+          .from("ses_votes")
           .select("*", { count: "exact", head: true })
           .eq("user_id", session.user.id),
 
@@ -315,10 +318,11 @@ export default function Profile() {
                 </View>
               </View>
 
+              {/* Stats Section */}
               <View className="flex-row gap-3">
                 <Pressable
                   onPress={() => router.push(`/${userSegment}/sess` as any)}
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:scale-[0.98] active:opacity-90 transition-all"
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
                   <Ionicons
                     name="paper-plane-outline"
@@ -340,7 +344,7 @@ export default function Profile() {
 
                 <Pressable
                   onPress={() => router.push(`/${userSegment}/votes` as any)}
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:scale-[0.98] active:opacity-90 transition-all"
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
                   <Ionicons
                     name="checkmark-done-outline"
@@ -363,9 +367,7 @@ export default function Profile() {
 
               <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
                 <Pressable
-                  onPress={() =>
-                    router.push(`/${userSegment}/bookmarks` as any)
-                  }
+                  onPress={() => setShowBookmarks(!showBookmarks)}
                   className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
                   <View className="flex-row items-center gap-3">

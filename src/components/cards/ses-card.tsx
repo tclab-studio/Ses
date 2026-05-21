@@ -2,13 +2,15 @@ import { ThemedText } from "@/components/themed-text";
 import { useAuthStore, useProfileStore } from "@/stores";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
+  Animated,
   Image,
   Platform,
   Pressable,
   Text,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from "react-native";
 
@@ -39,6 +41,7 @@ const formatDate = (iso: string) => {
   if (hrs < 24) return `${hrs}h`;
   return `${Math.floor(hrs / 24)}d`;
 };
+
 const OptionRow = React.memo(
   ({
     opt,
@@ -79,27 +82,108 @@ const OptionRow = React.memo(
 );
 OptionRow.displayName = "OptionRow";
 
+function SkeletonBox({
+  width,
+  height,
+  borderRadius = 8,
+  style,
+}: {
+  width?: number | string;
+  height: number;
+  borderRadius?: number;
+  style?: object;
+}) {
+  const scheme = useColorScheme();
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmer]);
+
+  const opacity = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 0.9],
+  });
+
+  const bgColor =
+    scheme === "dark" ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)";
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width: width ?? "100%",
+          height,
+          borderRadius,
+          backgroundColor: bgColor,
+          opacity,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+export function SesCardSkeleton() {
+  return (
+    <View className="bg-white dark:bg-neutral-900 rounded-3xl p-5 mb-1 shadow-sm shadow-black/[0.03]">
+      <View className="flex-row items-center justify-between mb-3.5">
+        <View className="flex-row items-center gap-2.5">
+          <SkeletonBox width={24} height={24} borderRadius={12} />
+          <SkeletonBox width={72} height={10} borderRadius={6} />
+          <SkeletonBox width={32} height={10} borderRadius={6} />
+        </View>
+        <SkeletonBox width={48} height={18} borderRadius={6} />
+      </View>
+
+      <View className="mb-4 gap-1.5">
+        <SkeletonBox width="90%" height={18} borderRadius={8} />
+        <SkeletonBox width="65%" height={18} borderRadius={8} />
+      </View>
+
+      <View className="gap-2 mb-4">
+        <SkeletonBox height={48} borderRadius={16} />
+        <SkeletonBox height={48} borderRadius={16} />
+        <SkeletonBox height={48} borderRadius={16} />
+      </View>
+
+      <View className="flex-row items-center justify-between pt-3 border-t border-neutral-100 dark:border-neutral-800">
+        <SkeletonBox width={80} height={12} borderRadius={6} />
+        <SkeletonBox width={64} height={28} borderRadius={999} />
+      </View>
+    </View>
+  );
+}
 export const SesCard = React.memo(
   ({ item }: { item: SesItem }) => {
     const router = useRouter();
     const sessionUserId = useAuthStore((s) => s.session?.user?.id);
-    const isBookmarked = useProfileStore((s) => s.isBookmarked);
-    const toggleBookmark = useProfileStore((s) => s.toggleBookmark);
-
-    const bookmarked = isBookmarked(item.id);
+    const bookmarked = useProfileStore((s) =>
+      s.bookmarkedIds.includes(item.id),
+    );
     const displayName = item.author?.username ?? "Anonymous";
     const avatar = item.author?.avatar_url ?? null;
     const initial = displayName.charAt(0).toUpperCase();
 
-    const handleBookmarkPress = () => {
-      if (!sessionUserId) {
-        alert("Please sign in to save bookmarks");
-        return;
-      }
-      toggleBookmark(sessionUserId, item.id);
-    };
+    const session = useAuthStore((s) => s.session);
 
-    // Heavy array extraction wrapped inside useMemo parameters
+    const toggleBookmark = useProfileStore((s) => s.toggleBookmark);
+
     const renderedOptions = useMemo(() => {
       const safeOptions = item?.options ?? [];
       const safeSelectedIds = item?.selected_option_ids ?? [];
@@ -193,17 +277,26 @@ export const SesCard = React.memo(
           </View>
 
           <TouchableOpacity
-            onPress={handleBookmarkPress}
             activeOpacity={0.7}
-            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full active:bg-neutral-100 dark:active:bg-neutral-800"
+            className="flex-row items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-3 py-2 rounded-full"
+            onPress={() => {
+              if (!session?.user?.id) return;
+
+              toggleBookmark(session.user.id, item.id);
+            }}
           >
             <Ionicons
               name={bookmarked ? "bookmark" : "bookmark-outline"}
               size={16}
               color={bookmarked ? "#f59e0b" : "#9ca3af"}
             />
+
             <Text
-              className={`text-xs font-medium ${bookmarked ? "text-amber-500" : "text-neutral-400"}`}
+              className={`text-xs font-semibold ${
+                bookmarked
+                  ? "text-amber-500"
+                  : "text-neutral-500 dark:text-neutral-400"
+              }`}
             >
               {bookmarked ? "Saved" : "Save"}
             </Text>
@@ -212,15 +305,8 @@ export const SesCard = React.memo(
       </View>
     );
   },
-  (prev, next) => {
-    return (
-      prev.item.id === next.item.id &&
-      prev.item.vote_count === next.item.vote_count &&
-      prev.item.has_voted === next.item.has_voted &&
-      prev.item.selected_option_ids?.length ===
-        next.item.selected_option_ids?.length
-    );
-  },
+  () => false,
 );
 
 SesCard.displayName = "SesCard";
+

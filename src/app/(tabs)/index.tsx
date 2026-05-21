@@ -1,4 +1,4 @@
-import { SesCard } from "@/components/cards/ses-card";
+import { SesCard, SesCardSkeleton } from "@/components/cards/ses-card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import {
@@ -12,7 +12,6 @@ import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   Text,
@@ -21,6 +20,38 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+const SKELETON_COUNT = 4;
+
+const SkeletonList = () => (
+  <View
+    style={{
+      paddingHorizontal: Spacing.four,
+      paddingTop: Spacing.four,
+      gap: Spacing.four,
+    }}
+  >
+    {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+      <SesCardSkeleton key={i} />
+    ))}
+  </View>
+);
+
+const EmptyState = () => (
+  <View className="items-center justify-center pt-32 gap-4">
+    <View className="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-900 items-center justify-center">
+      <Ionicons name="chatbubbles-outline" size={28} color="#9ca3af" />
+    </View>
+    <View className="items-center gap-1.5">
+      <ThemedText className="text-base font-bold text-neutral-800 dark:text-neutral-200">
+        Nothing here yet
+      </ThemedText>
+      <ThemedText className="text-sm text-neutral-400 dark:text-neutral-500 text-center px-8 leading-relaxed">
+        Be the very first one to drop an interesting question to this feed!
+      </ThemedText>
+    </View>
+  </View>
+);
 
 export default function HomeScreen() {
   const { session } = useAuthStore();
@@ -96,7 +127,10 @@ export default function HomeScreen() {
           { username: string | null; avatar_url: string | null }
         > = {};
         profilesRes.data?.forEach((p) => {
-          profilesById[p.id] = { username: p.username, avatar_url: p.avatar_url };
+          profilesById[p.id] = {
+            username: p.username,
+            avatar_url: p.avatar_url,
+          };
         });
 
         setFeed(
@@ -108,14 +142,14 @@ export default function HomeScreen() {
             has_voted: userVotedSes.has(s.id),
             selected_option_ids: selectedOptionsBySes[s.id] ?? [],
             author: profilesById[s.created_by] ?? null,
-          }))
+          })),
         );
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [session?.user?.id, isStale]
+    [session?.user?.id, isStale],
   );
 
   useEffect(() => {
@@ -129,11 +163,14 @@ export default function HomeScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "ses_votes" },
         async (payload) => {
-          const sesId = (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
+          const sesId =
+            (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
           if (!sesId) return;
 
-          const userId = (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
-          const optionId = (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
+          const userId =
+            (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
+          const optionId =
+            (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
 
           supabase
             .from("ses_votes")
@@ -150,7 +187,7 @@ export default function HomeScreen() {
               markAsVoted(sesId, optionId);
             }
           }
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -187,7 +224,7 @@ export default function HomeScreen() {
           if (newSes.created_by !== session?.user?.id) {
             prependItem(item);
           }
-        }
+        },
       )
       .subscribe((status) => setRealtimeConnected(status === "SUBSCRIBED"));
 
@@ -202,64 +239,49 @@ export default function HomeScreen() {
     load(true);
   };
 
-  if (loading) {
-    return (
-      <ThemedView className="flex-1 items-center justify-center bg-neutral-50 dark:bg-neutral-950">
-        <ActivityIndicator color={colors.text} size="small" />
-      </ThemedView>
-    );
-  }
-
   return (
     <ThemedView className="flex-1 items-center bg-neutral-50 dark:bg-neutral-950">
       <SafeAreaView
         className="flex-1 w-full"
         style={{ maxWidth: MaxContentWidth }}
       >
-        {/* Custom Screen Header Layout */}
         <View className="flex-row items-center justify-between px-4 py-3 bg-white dark:bg-neutral-950 border-b border-neutral-100 dark:border-neutral-900">
           <Text className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
             Feed
           </Text>
           <TouchableOpacity className="p-1 active:opacity-70">
-            <Ionicons name="notifications-outline" size={22} color={colors.text} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={colors.text}
+            />
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={feed}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <SesCard item={item} />}
-          contentContainerStyle={{
-            paddingHorizontal: Spacing.four,
-            paddingTop: Spacing.four,
-            paddingBottom: BottomTabInset + Spacing.three,
-            gap: Spacing.four,
-          }}
-          ListEmptyComponent={
-            <View className="items-center justify-center pt-32 gap-3">
-              <View className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-900 items-center justify-center">
-                <Ionicons name="chatbubbles-outline" size={22} color="#9ca3af" />
-              </View>
-              <View className="items-center gap-1">
-                <ThemedText className="text-base font-bold text-neutral-800 dark:text-neutral-200">
-                  Nothing here yet
-                </ThemedText>
-                <ThemedText className="text-sm text-neutral-400 dark:text-neutral-500 text-center px-6">
-                  Be the very first one to drop an interesting question to this feed!
-                </ThemedText>
-              </View>
-            </View>
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.text}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
+        {loading ? (
+          <SkeletonList />
+        ) : (
+          <FlatList
+            data={feed}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <SesCard item={item} />}
+            contentContainerStyle={{
+              paddingHorizontal: Spacing.four,
+              paddingTop: Spacing.four,
+              paddingBottom: BottomTabInset + Spacing.three,
+              gap: Spacing.four,
+            }}
+            ListEmptyComponent={<EmptyState />}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.text}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          />
+        )}
       </SafeAreaView>
     </ThemedView>
   );

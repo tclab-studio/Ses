@@ -31,7 +31,10 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         },
         {
           "action": "VIEW",
@@ -43,7 +46,10 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "package": "com.tclab.Ses"
@@ -51,7 +57,6 @@
     "web": {
       "output": "static"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -76,7 +81,9 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -84,4 +91,3 @@
     }
   }
 }
-

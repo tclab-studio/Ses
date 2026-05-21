@@ -1,3 +1,4 @@
+import { useProfileStore } from "@/stores";
 import {
   DarkTheme,
   DefaultTheme,
@@ -67,6 +68,16 @@ function AuthGate() {
         setCheckingUsername(false);
       });
   }, [session?.user?.id]);
+
+  const sessionUserId = useAuthStore((s) => s.session?.user?.id);
+
+  const fetchBookmarks = useProfileStore((s) => s.fetchBookmarks);
+
+  useEffect(() => {
+    if (sessionUserId) {
+      fetchBookmarks(sessionUserId);
+    }
+  }, [sessionUserId]);
 
   useEffect(() => {
     if (initializing || checkingUsername) return;
