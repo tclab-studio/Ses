@@ -9,6 +9,7 @@ import {
   Pressable,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -167,7 +168,7 @@ export default function UsernameSetup() {
           </Text>
         </Animated.View>
 
-        <Pressable
+        <TouchableOpacity
           onPress={handleSave}
           disabled={!isValid || saving}
           activeOpacity={0.85}
@@ -184,7 +185,7 @@ export default function UsernameSetup() {
               Continue
             </Text>
           )}
-        </Pressable>
+        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );

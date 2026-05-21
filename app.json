@@ -4,18 +4,20 @@
     "slug": "Ses",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
     "scheme": "ses",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": {
+        "light": "./assets/images/icons/ios-icon-default.png",
+        "dark": "./assets/images/icons/ios-icon-dark.png",
+        "tinted": "./assets/images/icons/ios-icon-tinted.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/images/icons/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/icons/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
@@ -29,10 +31,7 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         },
         {
           "action": "VIEW",
@@ -44,27 +43,36 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
-      "package": "com.anonymous.Ses"
+      "package": "com.tclab.Ses"
     },
     "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "static"
     },
+
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#ffffff",
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/icons/splash-android.png",
+            "imageWidth": 76,
+            "dark": {
+              "image": "./assets/images/icons/splash-android.png",
+              "imageWidth": 76
+            }
+          },
+          "ios": {
+            "image": "./assets/images/icons/splash-ios.png",
+            "imageWidth": 120,
+            "dark": {
+              "image": "./assets/images/icons/splash-ios-dark.png",
+              "imageWidth": 120
+            }
           }
         }
       ],
@@ -76,3 +84,4 @@
     }
   }
 }
+
