@@ -12,6 +12,7 @@ import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
+  Animated,
   FlatList,
   RefreshControl,
   Text,
@@ -73,9 +74,22 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = React.useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const fadeIn = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 420,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const load = useCallback(
     async (force = false) => {
-      if (!force && !isStale()) return;
+      if (!force && !isStale()) {
+        if (!loading) fadeIn();
+        return;
+      }
 
       try {
         const { data: sesData } = await supabase
@@ -101,9 +115,7 @@ export default function HomeScreen() {
 
         const optionsBySes: Record<string, { id: string; text: string }[]> = {};
         optionsRes.data?.forEach((o) => {
-          if (!optionsBySes[o.ses_id]) {
-            optionsBySes[o.ses_id] = [];
-          }
+          if (!optionsBySes[o.ses_id]) optionsBySes[o.ses_id] = [];
           optionsBySes[o.ses_id].push({ id: o.id, text: o.text });
         });
 
@@ -115,9 +127,8 @@ export default function HomeScreen() {
           voteCounts[v.ses_id] = (voteCounts[v.ses_id] ?? 0) + 1;
           if (v.user_id === session?.user?.id) {
             userVotedSes.add(v.ses_id);
-            if (!selectedOptionsBySes[v.ses_id]) {
+            if (!selectedOptionsBySes[v.ses_id])
               selectedOptionsBySes[v.ses_id] = [];
-            }
             selectedOptionsBySes[v.ses_id].push(v.option_id);
           }
         });
@@ -147,6 +158,7 @@ export default function HomeScreen() {
       } finally {
         setLoading(false);
         setRefreshing(false);
+        fadeIn();
       }
     },
     [session?.user?.id, isStale],
@@ -155,6 +167,10 @@ export default function HomeScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && feed.length > 0) fadeIn();
+  }, [loading]);
 
   useEffect(() => {
     channelRef.current = supabase
@@ -181,11 +197,8 @@ export default function HomeScreen() {
             });
 
           if (userId === session?.user?.id && optionId) {
-            if (payload.eventType === "DELETE") {
-              markAsUnvoted(sesId, optionId);
-            } else {
-              markAsVoted(sesId, optionId);
-            }
+            if (payload.eventType === "DELETE") markAsUnvoted(sesId, optionId);
+            else markAsVoted(sesId, optionId);
           }
         },
       )
@@ -221,9 +234,7 @@ export default function HomeScreen() {
             author: profileRes.data ?? null,
           };
 
-          if (newSes.created_by !== session?.user?.id) {
-            prependItem(item);
-          }
+          if (newSes.created_by !== session?.user?.id) prependItem(item);
         },
       )
       .subscribe((status) => setRealtimeConnected(status === "SUBSCRIBED"));
@@ -261,28 +272,31 @@ export default function HomeScreen() {
         {loading ? (
           <SkeletonList />
         ) : (
-          <FlatList
-            data={feed}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <SesCard item={item} />}
-            contentContainerStyle={{
-              paddingHorizontal: Spacing.four,
-              paddingTop: Spacing.four,
-              paddingBottom: BottomTabInset + Spacing.three,
-              gap: Spacing.four,
-            }}
-            ListEmptyComponent={<EmptyState />}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={colors.text}
-              />
-            }
-            showsVerticalScrollIndicator={false}
-          />
+          <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+            <FlatList
+              data={feed}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => <SesCard item={item} />}
+              contentContainerStyle={{
+                paddingHorizontal: Spacing.four,
+                paddingTop: Spacing.four,
+                paddingBottom: BottomTabInset + Spacing.three,
+                gap: Spacing.four,
+              }}
+              ListEmptyComponent={<EmptyState />}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.text}
+                />
+              }
+              showsVerticalScrollIndicator={false}
+            />
+          </Animated.View>
         )}
       </SafeAreaView>
     </ThemedView>
   );
 }
+

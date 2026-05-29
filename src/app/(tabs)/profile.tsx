@@ -1,4 +1,3 @@
-import { ProfileBookmarks } from "@/components/profile-bookmarks";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,10 +16,14 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+
 
 export default function Profile() {
   const router = useRouter();
@@ -33,10 +36,17 @@ export default function Profile() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [showBookmarks, setShowBookmarks] = useState(false);
 
-  const [stats, setStats] = useState({ published: 0, voted: 0, saved: 0 });
+  const [stats, setStats] = useState({
+    published: 0,
+    voted: 0,
+    followers: 0,
+    following: 0,
+  });
   const [loadingStats, setLoadingStats] = useState(true);
+  const [followingUsers, setFollowingUsers] = useState<
+    { id: string; username: string | null; avatar_url: string | null }[]
+  >([]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
@@ -82,7 +92,13 @@ export default function Profile() {
         setAvatarUrl(profileData.avatar_url ?? null);
       }
 
-      const [publishedRes, votedRes, savedRes] = await Promise.all([
+      const [
+        publishedRes,
+        votedRes,
+        followersRes,
+        followingRes,
+        followingUsersRes,
+      ] = await Promise.all([
         supabase
           .from("ses")
           .select("*", { count: "exact", head: true })
@@ -94,18 +110,44 @@ export default function Profile() {
           .eq("user_id", session.user.id),
 
         supabase
-          .from("bookmarks")
+          .from("follows")
           .select("*", { count: "exact", head: true })
-          .eq("user_id", session.user.id),
+          .eq("following_id", session.user.id),
+
+        supabase
+          .from("follows")
+          .select("*", { count: "exact", head: true })
+          .eq("follower_id", session.user.id),
+
+        supabase
+          .from("follows")
+          .select("following_id")
+          .eq("follower_id", session.user.id)
+          .limit(20),
       ]);
 
       setStats({
-        published: publishedRes.count || 0,
-        voted: votedRes.count || 0,
-        saved: savedRes.count || 0,
+        published: publishedRes.count ?? 0,
+        voted: votedRes.count ?? 0,
+        followers: followersRes.count ?? 0,
+        following: followingRes.count ?? 0,
       });
+
+      const followingIds = (followingUsersRes.data ?? [])
+        .map((r: any) => r.following_id)
+        .filter(Boolean);
+
+      let mappedFollowing: { id: string; username: string | null; avatar_url: string | null }[] = [];
+      if (followingIds.length > 0) {
+        const { data: followingProfiles } = await supabase
+          .from("profiles")
+          .select("id, username, avatar_url")
+          .in("id", followingIds);
+        mappedFollowing = followingProfiles ?? [];
+      }
+      setFollowingUsers(mappedFollowing);
     } catch (error) {
-      console.error("Error loading profile metrics:", error);
+      console.error("Error loading profile:", error);
     } finally {
       setLoadingStats(false);
     }
@@ -119,7 +161,6 @@ export default function Profile() {
       username: username.trim(),
       updated_at: new Date().toISOString(),
     });
-
     setSaving(false);
     setEditing(false);
     if (error) Alert.alert("Error", "Could not save username.");
@@ -197,7 +238,6 @@ export default function Profile() {
   const displayName = username || googleName || "Anonymous";
   const email = session?.user?.email ?? "";
   const initial = displayName.charAt(0).toUpperCase();
-
   const userSegment = username.trim() || session?.user?.id || "profile";
 
   return (
@@ -207,26 +247,32 @@ export default function Profile() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
         >
-          <View className="items-center justify-center py-4 border-b border-neutral-100 dark:border-neutral-900">
-            <ThemedText className="text-base font-bold tracking-widest text-black dark:text-white">
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-900">
+            <ThemedText className="text-base font-black tracking-widest uppercase text-black dark:text-white">
               Profile
             </ThemedText>
+            <Pressable
+              onPress={handleSignOut}
+              className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/20 items-center justify-center active:opacity-70"
+            >
+              <Ionicons name="log-out-outline" size={16} color="#ef4444" />
+            </Pressable>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ padding: 16, paddingBottom: 100, gap: 24 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 100, gap: 16 }}
           >
             <Animated.View
               style={{
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
-                gap: 24,
+                gap: 16,
               }}
             >
-              {/* Profile Card */}
-              <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl p-5 border border-neutral-200 dark:border-neutral-800">
-                <View className="flex-row items-center gap-4">
+              {/* ── Avatar + name hero ── */}
+              <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800">
+                <View className="items-center gap-4">
                   <Animated.View
                     style={{ transform: [{ scale: avatarScale }] }}
                   >
@@ -237,23 +283,22 @@ export default function Profile() {
                       {displayAvatar ? (
                         <Image
                           source={{ uri: displayAvatar }}
-                          className="w-20 h-20 rounded-full"
+                          className="w-24 h-24 rounded-full"
                         />
                       ) : (
-                        <View className="w-20 h-20 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center">
-                          <ThemedText className="text-3xl font-bold text-neutral-500 dark:text-neutral-400">
+                        <View className="w-24 h-24 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center">
+                          <ThemedText className="text-4xl font-black text-neutral-500 dark:text-neutral-400">
                             {initial}
                           </ThemedText>
                         </View>
                       )}
-
-                      <View className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-black dark:bg-white items-center justify-center border-2 border-neutral-100 dark:border-neutral-900">
+                      <View className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-black dark:bg-white items-center justify-center border-2 border-neutral-100 dark:border-neutral-900">
                         {avatarUploading ? (
                           <ActivityIndicator size={12} color="white" />
                         ) : (
                           <Ionicons
                             name="camera"
-                            size={12}
+                            size={13}
                             color={Platform.OS === "ios" ? "white" : "black"}
                           />
                         )}
@@ -261,158 +306,194 @@ export default function Profile() {
                     </Pressable>
                   </Animated.View>
 
-                  <View className="flex-1 justify-center">
-                    {editing ? (
-                      <View className="gap-2">
-                        <TextInput
-                          value={username}
-                          onChangeText={setUsername}
-                          placeholder="Your username"
-                          placeholderTextColor="#9ca3af"
-                          autoFocus
-                          className="border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-black text-black dark:text-white rounded-xl px-3 py-2 text-base font-medium"
-                        />
-                        <View className="flex-row gap-2">
-                          <Pressable
-                            onPress={saveUsername}
-                            disabled={saving}
-                            className="bg-black dark:bg-white px-4 py-2 rounded-xl active:opacity-80 flex-1 items-center"
-                          >
-                            {saving ? (
-                              <ActivityIndicator size={16} color="white" />
-                            ) : (
-                              <ThemedText className="text-white dark:text-black text-xs font-bold">
-                                Save
-                              </ThemedText>
-                            )}
-                          </Pressable>
-                          <Pressable
-                            onPress={() => setEditing(false)}
-                            className="bg-neutral-200 dark:bg-neutral-800 px-4 py-2 rounded-xl active:opacity-80 flex-1 items-center"
-                          >
-                            <ThemedText className="text-black dark:text-white text-xs font-bold">
-                              Cancel
-                            </ThemedText>
-                          </Pressable>
-                        </View>
+                  {editing ? (
+                    <View className="w-full gap-2">
+                      <TextInput
+                        value={username}
+                        onChangeText={setUsername}
+                        placeholder="Your username"
+                        placeholderTextColor="#9ca3af"
+                        autoFocus
+                        className="border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-black text-black dark:text-white rounded-xl px-4 py-3 text-base font-medium text-center"
+                      />
+                      <View className="flex-row gap-2">
+                        <TouchableOpacity
+                          onPress={saveUsername}
+                          activeOpacity={0.75}
+                          style={{
+                            flex: 1,
+                            height: 40,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "#000",
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>
+                            {saving ? "Saving..." : "Save"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setEditing(false)}
+                          activeOpacity={0.75}
+                          style={{
+                            flex: 1,
+                            height: 40,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "transparent",
+                            borderWidth: 1.5,
+                            borderColor: "#d1d5db",
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: "#6b7280" }}>
+                            Cancel
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                    ) : (
-                      <View className="gap-1">
-                        <View className="flex-row items-center justify-between">
-                          <ThemedText className="text-xl font-bold tracking-tight">
-                            {displayName}
-                          </ThemedText>
-                          <Pressable
-                            onPress={() => setEditing(true)}
-                            className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center active:opacity-70"
-                          >
-                            <Ionicons name="pencil" size={14} color="#9ca3af" />
-                          </Pressable>
-                        </View>
-                        <ThemedText className="text-sm text-neutral-500 dark:text-neutral-400">
-                          {email}
+                    </View>
+                  ) : (
+                    <View className="items-center gap-1">
+                      <View className="flex-row items-center gap-2">
+                        <ThemedText className="text-2xl font-black tracking-tight">
+                          {displayName}
                         </ThemedText>
+                        <Pressable
+                          onPress={() => setEditing(true)}
+                          className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center active:opacity-70"
+                        >
+                          <Ionicons name="pencil" size={12} color="#9ca3af" />
+                        </Pressable>
                       </View>
-                    )}
-                  </View>
+                      <ThemedText className="text-sm text-neutral-400 dark:text-neutral-500">
+                        {email}
+                      </ThemedText>
+                    </View>
+                  )}
                 </View>
               </View>
 
-              {/* Stats Section */}
               <View className="flex-row gap-3">
                 <Pressable
-                  onPress={() => router.push(`/${userSegment}/sess` as any)}
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                  onPress={() =>
+                    router.push(`/${userSegment}/followers` as any)
+                  }
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
-                  <Ionicons
-                    name="paper-plane-outline"
-                    size={16}
-                    color="#9ca3af"
-                    className="mb-1"
-                  />
                   {loadingStats ? (
                     <ActivityIndicator size="small" color="#9ca3af" />
                   ) : (
                     <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
-                      {stats.published}
+                      {stats.followers}
                     </ThemedText>
                   )}
                   <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
-                    Publishes
+                    Followers
                   </ThemedText>
                 </Pressable>
 
                 <Pressable
-                  onPress={() => router.push(`/${userSegment}/votes` as any)}
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center justify-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                  onPress={() =>
+                    router.push(`/${userSegment}/following` as any)
+                  }
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
-                  <Ionicons
-                    name="checkmark-done-outline"
-                    size={16}
-                    color="#9ca3af"
-                    className="mb-1"
-                  />
                   {loadingStats ? (
                     <ActivityIndicator size="small" color="#9ca3af" />
                   ) : (
                     <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
-                      {stats.voted}
+                      {stats.following}
                     </ThemedText>
                   )}
                   <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
-                    Votes
+                    Following
                   </ThemedText>
                 </Pressable>
               </View>
 
               <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
                 <Pressable
-                  onPress={() => setShowBookmarks(!showBookmarks)}
+                  onPress={() => router.push(`/${userSegment}/sess` as any)}
                   className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70"
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 rounded-full bg-black dark:bg-white items-center justify-center">
-                      <Ionicons
-                        name="bookmark"
-                        size={14}
-                        color={Platform.OS === "ios" ? "white" : "black"}
-                      />
+                    <View className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 items-center justify-center">
+                      <Ionicons name="grid-outline" size={14} color="#3b82f6" />
                     </View>
                     <ThemedText className="text-base font-medium">
-                      My Bookmarks
+                      My Sess
                     </ThemedText>
                   </View>
-                  <Ionicons
-                    name={showBookmarks ? "chevron-down" : "chevron-forward"}
-                    size={20}
-                    color="#9ca3af"
-                  />
+                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
                 </Pressable>
 
                 <Pressable
-                  onPress={handleSignOut}
+                  onPress={() => router.push(`/${userSegment}/votes` as any)}
                   className="flex-row items-center justify-between p-4 active:opacity-70"
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 items-center justify-center">
-                      <Ionicons name="log-out" size={14} color="#ef4444" />
+                    <View className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 items-center justify-center">
+                      <Ionicons
+                        name="stats-chart-outline"
+                        size={14}
+                        color="#8b5cf6"
+                      />
                     </View>
-                    <ThemedText className="text-base font-medium text-red-500">
-                      Sign Out
+                    <ThemedText className="text-base font-medium">
+                      My Votes
                     </ThemedText>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
                 </Pressable>
               </View>
 
-              {showBookmarks && session?.user?.id && (
-                <View className="mt-2">
-                  <View className="mb-3 px-1">
-                    <ThemedText className="text-sm font-bold uppercase tracking-wider text-neutral-400">
-                      Saved Content
-                    </ThemedText>
+              {followingUsers.length > 0 && (
+                <View className="gap-3">
+                  <ThemedText className="text-xs font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">
+                    Following
+                  </ThemedText>
+                  <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
+                    {followingUsers.map((user, index) => {
+                      const name = user.username ?? "Unknown";
+                      const initial = name.charAt(0).toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={user.id}
+                          activeOpacity={0.7}
+                          onPress={() =>
+                            router.push(`/${user.username}/page` as any)
+                          }
+                          className={`flex-row items-center gap-3 p-4 active:opacity-70 ${
+                            index < followingUsers.length - 1
+                              ? "border-b border-neutral-200 dark:border-neutral-800"
+                              : ""
+                          }`}
+                        >
+                          {user.avatar_url ? (
+                            <Image
+                              source={{ uri: user.avatar_url }}
+                              className="w-9 h-9 rounded-full"
+                            />
+                          ) : (
+                            <View className="w-9 h-9 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center">
+                              <Text className="text-sm font-black text-neutral-500 dark:text-neutral-400">
+                                {initial}
+                              </Text>
+                            </View>
+                          )}
+                          <ThemedText className="text-sm font-semibold flex-1">
+                            {name}
+                          </ThemedText>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={16}
+                            color="#9ca3af"
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <ProfileBookmarks userId={session.user.id} />
                 </View>
               )}
             </Animated.View>

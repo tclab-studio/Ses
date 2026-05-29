@@ -1,12 +1,11 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/utils/supabase";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Pressable,
   Text,
   TextInput,
   TouchableOpacity,
@@ -66,7 +65,6 @@ export default function UsernameSetup() {
         .select("id")
         .eq("username", cleaned)
         .maybeSingle();
-
       setAvailable(!data);
       setChecking(false);
     }, 500);
@@ -83,29 +81,41 @@ export default function UsernameSetup() {
       Alert.alert("Taken", "That username is already taken.");
       return;
     }
-    if (!session?.user) return;
+    if (!session?.user) {
+      Alert.alert("Error", "No active session. Please sign in again.");
+      return;
+    }
 
     setSaving(true);
 
-    const meta = session.user.user_metadata;
-    const googleAvatar = meta?.avatar_url ?? meta?.picture ?? null;
-    const googleName = meta?.full_name ?? meta?.name ?? null;
-
-    const { error } = await supabase.from("profiles").upsert({
-      id: session.user.id,
-      username,
-      avatar_url: googleAvatar,
-      full_name: googleName,
-      updated_at: new Date().toISOString(),
-    });
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        id: session.user.id,
+        username,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
 
     setSaving(false);
 
     if (error) {
-      Alert.alert("Error", "Could not save username.");
+      console.error(
+        "[UsernameSetup] Supabase error:",
+        JSON.stringify(error, null, 2),
+      );
+      Alert.alert(
+        "Error",
+        `Could not save username.\n\nCode: ${error.code}\n${error.message}`,
+      );
       return;
     }
 
+    await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", session.user.id)
+      .maybeSingle();
     router.replace("/");
   };
 
@@ -114,57 +124,98 @@ export default function UsernameSetup() {
   const statusText = () => {
     if (username.length === 0) return null;
     if (username.length < 3)
-      return { text: "Min 3 characters", color: "text-neutral-400" };
-    if (checking) return { text: "Checking...", color: "text-neutral-400" };
-    if (available === true)
-      return { text: "Available ✓", color: "text-green-500" };
-    if (available === false)
-      return { text: "Already taken", color: "text-red-500" };
+      return { text: "Min 3 characters", color: "#a3a3a3" };
+    if (checking) return { text: "Checking...", color: "#a3a3a3" };
+    if (available === true) return { text: "✓ Available", color: "#22c55e" };
+    if (available === false) return { text: "Already taken", color: "#ef4444" };
     return null;
   };
 
   const status = statusText();
 
   return (
-    <View className="flex-1 bg-white">
-      <SafeAreaView className="flex-1 px-8 justify-between pb-12 pt-16">
-        <View className="gap-2">
-          <Text className="text-3xl font-bold tracking-tight text-black">
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+      <SafeAreaView
+        style={{
+          flex: 1,
+          paddingHorizontal: 32,
+          justifyContent: "space-between",
+          paddingBottom: 48,
+          paddingTop: 64,
+        }}
+      >
+        <View style={{ gap: 8 }}>
+          <Text
+            style={{
+              fontSize: 28,
+              fontWeight: "700",
+              letterSpacing: -0.5,
+              color: "#111",
+            }}
+          >
             Pick a username
           </Text>
-          <Text className="text-neutral-400 text-base leading-relaxed">
-            This is how others will see you on Ses. You can change it later.
+          <Text style={{ color: "#a3a3a3", fontSize: 15, lineHeight: 22 }}>
+            This is how others will see you. You can change it later.
           </Text>
         </View>
 
         <Animated.View
-          className="gap-3"
-          style={{ transform: [{ translateX: shakeAnim }] }}
+          style={{ gap: 10, transform: [{ translateX: shakeAnim }] }}
         >
-          <View className="border border-neutral-200 rounded-2xl px-4 py-3 flex-row items-center">
-            <Text className="text-neutral-400 text-base mr-1">@</Text>
+          <View
+            style={{
+              borderWidth: 1.5,
+              borderColor:
+                available === true
+                  ? "#22c55e"
+                  : available === false
+                    ? "#ef4444"
+                    : "#e5e5e5",
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#fafafa",
+            }}
+          >
+            <Text style={{ color: "#a3a3a3", fontSize: 16, marginRight: 4 }}>
+              @
+            </Text>
             <TextInput
               value={username}
               onChangeText={handleChange}
               placeholder="yourname"
-              placeholderTextColor="#a3a3a3"
+              placeholderTextColor="#c4c4c4"
               autoFocus
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={24}
-              className="flex-1 text-base font-medium text-black"
+              style={{
+                flex: 1,
+                fontSize: 16,
+                fontWeight: "500",
+                color: "#111",
+              }}
             />
             {checking && <ActivityIndicator size="small" color="#a3a3a3" />}
+            {!checking && available === true && (
+              <Text style={{ color: "#22c55e", fontSize: 18 }}>✓</Text>
+            )}
+            {!checking && available === false && (
+              <Text style={{ color: "#ef4444", fontSize: 18 }}>✕</Text>
+            )}
           </View>
 
           {status && (
-            <Text className={`text-xs pl-1 ${status.color}`}>
+            <Text style={{ fontSize: 12, paddingLeft: 4, color: status.color }}>
               {status.text}
             </Text>
           )}
 
-          <Text className="text-xs text-neutral-400 pl-1">
-            Only letters, numbers, dots and underscores.
+          <Text style={{ fontSize: 12, color: "#c4c4c4", paddingLeft: 4 }}>
+            Letters, numbers, dots and underscores only.
           </Text>
         </Animated.View>
 
@@ -172,15 +223,22 @@ export default function UsernameSetup() {
           onPress={handleSave}
           disabled={!isValid || saving}
           activeOpacity={0.85}
-          className={`py-4 rounded-2xl items-center ${
-            isValid && !saving ? "bg-black" : "bg-neutral-200"
-          }`}
+          style={{
+            paddingVertical: 17,
+            borderRadius: 16,
+            alignItems: "center",
+            backgroundColor: isValid && !saving ? "#111" : "#f0f0f0",
+          }}
         >
           {saving ? (
             <ActivityIndicator color={isValid ? "#fff" : "#a3a3a3"} />
           ) : (
             <Text
-              className={`font-semibold text-base ${isValid ? "text-white" : "text-neutral-400"}`}
+              style={{
+                fontWeight: "600",
+                fontSize: 16,
+                color: isValid ? "#fff" : "#c4c4c4",
+              }}
             >
               Continue
             </Text>
