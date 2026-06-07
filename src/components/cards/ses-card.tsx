@@ -14,7 +14,6 @@ import React, {
 } from "react";
 import {
   Image,
-  Platform,
   Pressable,
   Animated as RNAnimated,
   Text,
@@ -41,7 +40,10 @@ export type SesItem = {
   vote_count: number;
   selected_option_ids: string[] | null | undefined;
   has_voted: boolean;
-  options: { id: string; text: string }[] | null | undefined;
+  options:
+    | { id: string; text: string; vote_count?: number }[]
+    | null
+    | undefined;
   author: { username: string | null; avatar_url: string | null } | null;
   topics?: { id: string; name: string; emoji: string | null }[];
   end_date?: string | null;
@@ -82,23 +84,27 @@ const OptionRow = React.memo(
     voteType,
     onPress,
     disabled,
+    totalVotes,
   }: {
-    opt: { id: string; text: string };
+    opt: { id: string; text: string; vote_count?: number };
     isSelected: boolean;
     hasVoted: boolean;
     voteType: "single" | "multiple";
     onPress: () => void;
     disabled: boolean;
+    totalVotes: number;
   }) => {
     const scale = useSharedValue(1);
-
-    useEffect(() => {}, [isSelected]);
 
     const animStyle = useAnimatedStyle(() => ({
       transform: [{ scale: scale.value }],
     }));
 
     const isLocked = voteType === "single" && hasVoted && !isSelected;
+    const pct =
+      totalVotes > 0 && opt.vote_count != null
+        ? Math.round((opt.vote_count / totalVotes) * 100)
+        : 0;
 
     return (
       <Pressable
@@ -110,13 +116,27 @@ const OptionRow = React.memo(
           scale.value = withSpring(1, { damping: 20 });
         }}
         onPress={isLocked || disabled ? undefined : onPress}
-        className={`flex-row items-center justify-between px-4 py-3.5 rounded-2xl ${
+        className={`flex-row items-center justify-between px-4 py-3.5 rounded-2xl overflow-hidden relative ${
           isSelected
-            ? "bg-neutral-900 dark:bg-white"
+            ? "bg-sky-500/10 dark:bg-sky-400/10 border border-sky-400/30"
             : "bg-neutral-50 dark:bg-neutral-800/60"
         }`}
         style={{ opacity: isLocked ? 0.45 : 1 }}
       >
+        {hasVoted && opt.vote_count != null && (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${pct}%`,
+              backgroundColor: isSelected ? "#0ea5e9" : "#bae6fd",
+              opacity: 0.12,
+            }}
+          />
+        )}
+
         <Animated.View
           style={animStyle}
           className="flex-row items-center flex-1"
@@ -124,7 +144,7 @@ const OptionRow = React.memo(
           <Text
             className={`text-sm font-medium flex-1 pr-4 ${
               isSelected
-                ? "text-white dark:text-black font-semibold"
+                ? "text-sky-600 dark:text-sky-400 font-semibold"
                 : "text-neutral-800 dark:text-neutral-200"
             }`}
             numberOfLines={2}
@@ -132,15 +152,15 @@ const OptionRow = React.memo(
             {opt.text}
           </Text>
           {isSelected && (
-            <Ionicons
-              name="checkmark-circle"
-              size={18}
-              color={
-                hasVoted ? "#10b981" : Platform.OS === "ios" ? "#fff" : "#000"
-              }
-            />
+            <Ionicons name="checkmark-circle" size={18} color="#0ea5e9" />
           )}
         </Animated.View>
+
+        {hasVoted && opt.vote_count != null && (
+          <Text className="text-xs font-bold text-sky-500 dark:text-sky-400 tabular-nums ml-2">
+            {pct}%
+          </Text>
+        )}
       </Pressable>
     );
   },
@@ -525,8 +545,10 @@ export const SesCard = React.memo(
       transform: [{ scale: cardScale.value }],
     }));
 
+    const totalVotes = item.vote_count ?? 0;
+    const safeOptions = item?.options ?? [];
+
     const renderedOptions = useMemo(() => {
-      const safeOptions = item?.options ?? [];
       const safeSelectedIds = item?.selected_option_ids ?? [];
       return safeOptions
         .slice(0, 3)
@@ -539,15 +561,17 @@ export const SesCard = React.memo(
             voteType={item.vote_type}
             onPress={() => handleVote(opt.id)}
             disabled={voting}
+            totalVotes={totalVotes}
           />
         ));
     }, [
-      item?.options,
+      safeOptions,
       item?.selected_option_ids,
       item.has_voted,
       item.vote_type,
       voting,
       handleVote,
+      totalVotes,
     ]);
 
     const displayTime = useMemo(

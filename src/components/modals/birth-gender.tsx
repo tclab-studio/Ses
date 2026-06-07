@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Platform, // 1. Import Platform
   Text,
   TouchableOpacity,
   useColorScheme,
@@ -27,10 +28,12 @@ export default function BirthDateGenderModal({
 }: BirthDateGenderModalProps) {
   const scheme = useColorScheme();
   const dark = scheme === "dark";
+  const isWeb = Platform.OS === "web"; // 2. Check for web platform
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
-  const snapPoints = useMemo(() => ["55%", "72% "], []);
+  // 3. Fixed the trailing space typo in "72%"
+  const snapPoints = useMemo(() => ["55%", "72%"], []);
 
   const [gender, setGender] = useState("Male");
   const [year, setYear] = useState("2000");
@@ -116,20 +119,44 @@ export default function BirthDateGenderModal({
       ref={bottomSheetModalRef}
       index={0}
       snapPoints={snapPoints}
-      enablePanDownToClose
+      enablePanDownToClose={!isWeb} // Disable drag-to-close gesture on Web for cleaner UX
       onDismiss={onDismiss}
       backdropComponent={renderBackdrop}
       keyboardBehavior="extend"
+      // 4. Detached properties configuration for Web
+      detached={isWeb}
+      bottomInset={isWeb ? 50 : 0}
+      style={
+        isWeb
+          ? {
+              maxWidth: 460,
+              width: "100%",
+              alignSelf: "center",
+              // Give it subtle shadow for desktop web environments
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+            }
+          : undefined
+      }
       backgroundStyle={{
         backgroundColor: dark ? "#09090b" : "#ffffff",
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
+        // Make corners fully rounded like a modal on web
+        borderBottomLeftRadius: isWeb ? 32 : 0,
+        borderBottomRightRadius: isWeb ? 32 : 0,
       }}
-      handleIndicatorStyle={{
-        backgroundColor: dark ? "#27272a" : "#e4e4e7",
-        width: 44,
-        height: 5,
-      }}
+      handleIndicatorStyle={
+        isWeb
+          ? { display: "none" } // Hide the mobile grab bar on web screens
+          : {
+              backgroundColor: dark ? "#27272a" : "#e4e4e7",
+              width: 44,
+              height: 5,
+            }
+      }
     >
       <BottomSheetView className="p-6 justify-between flex-1 pb-8">
         <View className="gap-6">

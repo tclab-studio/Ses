@@ -37,7 +37,6 @@ export default function TopicsScreen() {
   const isCtaActive = true;
   const BottomTabInset = 0;
   const Spacing = { three: 12 };
-  const handleNextStep = () => {};
 
   const handleSubmit = () => {
     if (followed.size === 0) {
@@ -193,7 +192,7 @@ export default function TopicsScreen() {
                 >
                   {items.map((t) => {
                     const isFollowed = followed.has(t.id);
-                    const isToggling = toggling === t.id;
+                    const isCurrentlyToggling = toggling === t.id;
                     return (
                       <TouchableOpacity
                         key={t.id}
@@ -222,7 +221,7 @@ export default function TopicsScreen() {
                             : isDark
                               ? "#222"
                               : "#e5e7eb",
-                          opacity: isToggling ? 0.6 : 1,
+                          opacity: isCurrentlyToggling ? 0.6 : 1,
                         }}
                       >
                         <Text
@@ -240,14 +239,14 @@ export default function TopicsScreen() {
                         >
                           {t.name}
                         </Text>
-                        {isFollowed && !isToggling && (
+                        {isFollowed && !isCurrentlyToggling && (
                           <Ionicons
                             name="checkmark"
                             size={13}
                             color={isDark ? "#000" : "#fff"}
                           />
                         )}
-                        {isToggling && (
+                        {isCurrentlyToggling && (
                           <ActivityIndicator
                             size={12}
                             color={
@@ -285,7 +284,7 @@ export default function TopicsScreen() {
             )}
 
             <Pressable
-              onPress={step < 3 ? handleNextStep : handleSubmit}
+              onPress={handleSubmit}
               disabled={
                 (step === 1 && !isStep1Ready) ||
                 (step === 2 && !isStep2Ready) ||

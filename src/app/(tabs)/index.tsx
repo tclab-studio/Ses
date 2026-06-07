@@ -56,7 +56,11 @@ const EmptyState = () => (
   </View>
 );
 
-type FilterOption = { key: "all" | "following" | "topics" | "trending"; label: string; icon: string };
+type FilterOption = {
+  key: "all" | "following" | "topics" | "trending";
+  label: string;
+  icon: string;
+};
 
 const FILTERS: FilterOption[] = [
   { key: "all", label: "All", icon: "apps-outline" },
@@ -119,11 +123,15 @@ export default function HomeScreen() {
       try {
         let query = supabase
           .from("ses")
-          .select("id, question, description, vote_type, created_at, created_by, end_date, is_anonymous");
+          .select(
+            "id, question, description, vote_type, created_at, created_by, end_date, is_anonymous",
+          );
 
         if (selectedFilter === "trending") {
           const cutoff = new Date(Date.now() - 48 * 3600000).toISOString();
-          query = query.gte("created_at", cutoff).order("vote_count", { ascending: false });
+          query = query
+            .gte("created_at", cutoff)
+            .order("vote_count", { ascending: false });
         } else {
           query = query.order("created_at", { ascending: false });
         }
@@ -138,8 +146,12 @@ export default function HomeScreen() {
             .from("follows")
             .select("following_id")
             .eq("follower_id", session.user.id);
-          const followingIds = new Set((follows ?? []).map((f) => f.following_id));
-          filteredSesData = sesData.filter((s) => followingIds.has(s.created_by));
+          const followingIds = new Set(
+            (follows ?? []).map((f) => f.following_id),
+          );
+          filteredSesData = sesData.filter((s) =>
+            followingIds.has(s.created_by),
+          );
         }
 
         if (selectedFilter === "topics" && session?.user?.id) {
@@ -153,14 +165,18 @@ export default function HomeScreen() {
               .from("ses_topics")
               .select("ses_id")
               .in("topic_id", topicIds);
-            const sesIdsWithTopics = new Set((sesTopics ?? []).map((t) => t.ses_id));
+            const sesIdsWithTopics = new Set(
+              (sesTopics ?? []).map((t) => t.ses_id),
+            );
             filteredSesData = sesData.filter((s) => sesIdsWithTopics.has(s.id));
           } else {
             filteredSesData = [];
           }
         }
 
-        const creatorIds = [...new Set(filteredSesData.map((s) => s.created_by))];
+        const creatorIds = [
+          ...new Set(filteredSesData.map((s) => s.created_by)),
+        ];
         const sesIds = filteredSesData.map((s) => s.id);
 
         if (sesIds.length === 0) {
@@ -168,22 +184,26 @@ export default function HomeScreen() {
           return;
         }
 
-        const [optionsRes, votesRes, profilesRes, topicsRes] = await Promise.all([
-          supabase
-            .from("ses_options")
-            .select("id, ses_id, text, order")
-            .in("ses_id", sesIds)
-            .order("order"),
-          supabase.from("ses_votes").select("ses_id, option_id, user_id").in("ses_id", sesIds),
-          supabase
-            .from("profiles")
-            .select("id, username, avatar_url")
-            .in("id", creatorIds),
-          supabase
-            .from("ses_topics")
-            .select("ses_id, topics(id, name, emoji)")
-            .in("ses_id", sesIds),
-        ]);
+        const [optionsRes, votesRes, profilesRes, topicsRes] =
+          await Promise.all([
+            supabase
+              .from("ses_options")
+              .select("id, ses_id, text, order")
+              .in("ses_id", sesIds)
+              .order("order"),
+            supabase
+              .from("ses_votes")
+              .select("ses_id, option_id, user_id")
+              .in("ses_id", sesIds),
+            supabase
+              .from("profiles")
+              .select("id, username, avatar_url")
+              .in("id", creatorIds),
+            supabase
+              .from("ses_topics")
+              .select("ses_id, topics(id, name, emoji)")
+              .in("ses_id", sesIds),
+          ]);
 
         const optionsBySes: Record<string, { id: string; text: string }[]> = {};
         optionsRes.data?.forEach((o) => {
@@ -198,17 +218,27 @@ export default function HomeScreen() {
           voteCounts[v.ses_id] = (voteCounts[v.ses_id] ?? 0) + 1;
           if (v.user_id === session?.user?.id) {
             userVotedSes.add(v.ses_id);
-            if (!selectedOptionsBySes[v.ses_id]) selectedOptionsBySes[v.ses_id] = [];
+            if (!selectedOptionsBySes[v.ses_id])
+              selectedOptionsBySes[v.ses_id] = [];
             selectedOptionsBySes[v.ses_id].push(v.option_id);
           }
         });
 
-        const profilesById: Record<string, { username: string | null; avatar_url: string | null }> = {};
+        const profilesById: Record<
+          string,
+          { username: string | null; avatar_url: string | null }
+        > = {};
         profilesRes.data?.forEach((p) => {
-          profilesById[p.id] = { username: p.username, avatar_url: p.avatar_url };
+          profilesById[p.id] = {
+            username: p.username,
+            avatar_url: p.avatar_url,
+          };
         });
 
-        const topicsBySes: Record<string, { id: string; name: string; emoji: string | null }[]> = {};
+        const topicsBySes: Record<
+          string,
+          { id: string; name: string; emoji: string | null }[]
+        > = {};
         topicsRes.data?.forEach((row: any) => {
           if (!topicsBySes[row.ses_id]) topicsBySes[row.ses_id] = [];
           if (row.topics) topicsBySes[row.ses_id].push(row.topics);
@@ -250,11 +280,14 @@ export default function HomeScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "ses_votes" },
         async (payload) => {
-          const sesId = (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
+          const sesId =
+            (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
           if (!sesId) return;
 
-          const userId = (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
-          const optionId = (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
+          const userId =
+            (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
+          const optionId =
+            (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
 
           supabase
             .from("ses_votes")
@@ -276,8 +309,16 @@ export default function HomeScreen() {
         async (payload) => {
           const newSes = payload.new as any;
           const [optRes, profileRes] = await Promise.all([
-            supabase.from("ses_options").select("id, text, order").eq("ses_id", newSes.id).order("order"),
-            supabase.from("profiles").select("username, avatar_url").eq("id", newSes.created_by).single(),
+            supabase
+              .from("ses_options")
+              .select("id, text, order")
+              .eq("ses_id", newSes.id)
+              .order("order"),
+            supabase
+              .from("profiles")
+              .select("username, avatar_url")
+              .eq("id", newSes.created_by)
+              .single(),
           ]);
 
           const item = {
@@ -314,7 +355,9 @@ export default function HomeScreen() {
     load(true);
   };
 
-  const handleFilterChange = (f: "all" | "following" | "topics" | "trending") => {
+  const handleFilterChange = (
+    f: "all" | "following" | "topics" | "trending",
+  ) => {
     setSelectedFilter(f);
     setLoading(true);
   };
@@ -333,7 +376,11 @@ export default function HomeScreen() {
             className="p-1 active:opacity-70 relative"
             onPress={() => router.push("/notifications" as any)}
           >
-            <Ionicons name="notifications-outline" size={22} color={colors.text} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={colors.text}
+            />
             {unreadCount > 0 && (
               <View
                 style={{
@@ -350,11 +397,21 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={{ backgroundColor: isDark ? "#0a0a0a" : "#fff", borderBottomWidth: 1, borderBottomColor: isDark ? "#171717" : "#f3f4f6" }}>
+        <View
+          style={{
+            backgroundColor: isDark ? "#0a0a0a" : "#fff",
+            borderBottomWidth: 1,
+            borderBottomColor: isDark ? "#171717" : "#f3f4f6",
+          }}
+        >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              gap: 8,
+            }}
           >
             {FILTERS.map((f) => {
               const active = selectedFilter === f.key;
@@ -371,20 +428,38 @@ export default function HomeScreen() {
                     paddingVertical: 7,
                     borderRadius: 999,
                     backgroundColor: active
-                      ? isDark ? "#fff" : "#111"
-                      : isDark ? "#171717" : "#f3f4f6",
+                      ? isDark
+                        ? "#fff"
+                        : "#111"
+                      : isDark
+                        ? "#171717"
+                        : "#f3f4f6",
                   }}
                 >
                   <Ionicons
                     name={f.icon as any}
                     size={13}
-                    color={active ? (isDark ? "#000" : "#fff") : isDark ? "#555" : "#9ca3af"}
+                    color={
+                      active
+                        ? isDark
+                          ? "#000"
+                          : "#fff"
+                        : isDark
+                          ? "#555"
+                          : "#9ca3af"
+                    }
                   />
                   <Text
                     style={{
                       fontSize: 12,
                       fontWeight: "700",
-                      color: active ? (isDark ? "#000" : "#fff") : isDark ? "#555" : "#6b7280",
+                      color: active
+                        ? isDark
+                          ? "#000"
+                          : "#fff"
+                        : isDark
+                          ? "#555"
+                          : "#6b7280",
                     }}
                   >
                     {f.label}
@@ -425,3 +500,4 @@ export default function HomeScreen() {
     </ThemedView>
   );
 }
+

@@ -1,5 +1,5 @@
-import { useGeoPrompt } from "@/hooks/useGeoPrompt";
 import { useEnvironment } from "@/hooks/useEnvironment";
+import { useGeoPrompt } from "@/hooks/useGeoPrompt";
 import { useAuthStore, useProfileStore } from "@/stores";
 import { syncDeviceCity } from "@/utils/geo";
 import { supabase } from "@/utils/supabase";
@@ -17,7 +17,9 @@ async function getStorageItem(key: string): Promise<string | null> {
       return null;
     }
   }
-  const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+  const AsyncStorage = (
+    await import("@react-native-async-storage/async-storage")
+  ).default;
   return AsyncStorage.getItem(key);
 }
 
@@ -70,13 +72,18 @@ export function AuthAndGeoGate() {
 
       const handleUrl = async (url: string) => {
         if (!url.includes("auth/callback")) return;
-        const fragment = url.includes("#") ? url.split("#")[1] : url.split("?")[1];
+        const fragment = url.includes("#")
+          ? url.split("#")[1]
+          : url.split("?")[1];
         if (!fragment) return;
         const params = new URLSearchParams(fragment);
         const accessToken = params.get("access_token");
         const refreshToken = params.get("refresh_token");
         if (accessToken && refreshToken) {
-          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
         }
       };
 
@@ -101,8 +108,16 @@ export function AuthAndGeoGate() {
     setCheckingTopics(true);
 
     Promise.all([
-      supabase.from("profiles").select("username").eq("id", session.user.id).maybeSingle(),
-      supabase.from("user_topics").select("topic_id").eq("user_id", session.user.id).limit(1)
+      supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", session.user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_topics")
+        .select("topic_id")
+        .eq("user_id", session.user.id)
+        .limit(1),
     ]).then(([{ data: profileData }, { data: topicsData }]) => {
       setHasUsername(!!profileData?.username);
       setCheckingUsername(false);
@@ -117,7 +132,13 @@ export function AuthAndGeoGate() {
   }, [userId]);
 
   useEffect(() => {
-    if (initializing || checkingUsername || checkingOnboarding || checkingTopics) return;
+    if (
+      initializing ||
+      checkingUsername ||
+      checkingOnboarding ||
+      checkingTopics
+    )
+      return;
 
     const inOnboarding = segments[0] === "onboard";
     const inAuthGroup = segments[0] === "auth";
@@ -153,7 +174,11 @@ export function AuthAndGeoGate() {
       return;
     }
 
-    if (hasUsername === true && hasTopics === true && (inAuthGroup || inUsernameSetup || inOnboarding || inTopics)) {
+    if (
+      hasUsername === true &&
+      hasTopics === true &&
+      (inAuthGroup || inUsernameSetup || inOnboarding || inTopics)
+    ) {
       router.replace("/");
     }
   }, [
@@ -186,6 +211,22 @@ export function AuthAndGeoGate() {
   }, [session?.user?.id, hasUsername]);
 
   useEffect(() => {
+    if (!session?.user?.id || hasTopics !== false) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("user_topics")
+        .select("topic_id")
+        .eq("user_id", session.user.id)
+        .limit(1);
+      if (data && data.length > 0) {
+        setHasTopics(true);
+        clearInterval(interval);
+      }
+    }, 400);
+    return () => clearInterval(interval);
+  }, [session?.user?.id, hasTopics]);
+
+  useEffect(() => {
     if (showLocationPrompt && userId) {
       dismiss();
       if (Platform.OS !== "web") {
@@ -194,7 +235,11 @@ export function AuthAndGeoGate() {
     }
   }, [showLocationPrompt, userId]);
 
-  if (initializing || checkingOnboarding || (session && (checkingUsername || checkingTopics))) {
+  if (
+    initializing ||
+    checkingOnboarding ||
+    (session && (checkingUsername || checkingTopics))
+  ) {
     return (
       <View className="flex-1 bg-white dark:bg-zinc-950 items-center justify-center">
         <ActivityIndicator
@@ -207,3 +252,4 @@ export function AuthAndGeoGate() {
 
   return <Slot />;
 }
+
