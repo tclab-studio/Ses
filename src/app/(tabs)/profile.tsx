@@ -1,10 +1,16 @@
+import GeoInfoCard, { type GeoState } from "@/components/cards/geo-card";
+import DemographicsBanner, {
+  OK_HIT_SLOP,
+} from "@/components/demographics-banner";
+import BirthDateGenderModal from "@/components/modals/birth-gender";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/useAuth";
+import { useFollow } from "@/hooks/useFollow";
 import { useProfileStore, useUserActivityStore } from "@/stores";
+import { fetchIpGeoData } from "@/utils/geo";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -23,12 +29,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-
-
 export default function Profile() {
   const router = useRouter();
-  const { session, signOut } = useAuth();
-  const { fetchBookmarks } = useProfileStore();
+  const { session } = useAuth();
+  const { fetchLikes } = useProfileStore();
   const { fetchBookmarkedSess } = useUserActivityStore();
 
   const [username, setUsername] = useState("");
@@ -36,6 +40,8 @@ export default function Profile() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [showBirthGenderModal, setShowBirthGenderModal] = useState(false);
+  const [hasDemographics, setHasDemographics] = useState(false);
 
   const [stats, setStats] = useState({
     published: 0,
@@ -44,37 +50,112 @@ export default function Profile() {
     following: 0,
   });
   const [loadingStats, setLoadingStats] = useState(true);
-  const [followingUsers, setFollowingUsers] = useState<
-    { id: string; username: string | null; avatar_url: string | null }[]
-  >([]);
+  const [, setFollowingUsers] = useState<any[]>([]);
+
+  const [geo, setGeo] = useState<GeoState>({
+    ipData: null,
+    deviceCity: null,
+    deviceCoords: null,
+    loadingIp: true,
+    loadingDevice: false,
+    devicePermission: Platform.OS === "web" ? "denied" : "unknown",
+  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(24)).current;
+  const slideAnim = useRef(new Animated.Value(8)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
+
+  const { followerCount: cachedFollowers } = useFollow(
+    session?.user?.id || "",
+    session?.user?.id || null,
+  );
 
   useFocusEffect(
     React.useCallback(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 250,
           useNativeDriver: true,
         }),
         Animated.spring(slideAnim, {
           toValue: 0,
-          tension: 80,
-          friction: 12,
+          tension: 120,
+          friction: 14,
           useNativeDriver: true,
         }),
       ]).start();
 
       if (session?.user) {
         loadProfileAndStats();
-        fetchBookmarks(session.user.id);
+        fetchLikes(session.user.id);
         fetchBookmarkedSess(session.user.id);
+        loadGeoData();
       }
     }, [session]),
   );
+
+  const loadGeoData = async () => {
+    setGeo((prev) => ({ ...prev, loadingIp: true }));
+    const ipData = await fetchIpGeoData();
+    setGeo((prev) => ({ ...prev, ipData, loadingIp: false }));
+
+    if (Platform.OS === "web") return;
+
+    const Location = await import("expo-location");
+    const { status } = await Location.getForegroundPermissionsAsync();
+    if (status === "granted") {
+      setGeo((prev) => ({ ...prev, devicePermission: "granted" }));
+      await fetchDeviceLocation();
+    } else if (status === "denied") {
+      setGeo((prev) => ({ ...prev, devicePermission: "denied" }));
+    }
+  };
+
+  const fetchDeviceLocation = async () => {
+    if (Platform.OS === "web") return;
+    setGeo((prev) => ({ ...prev, loadingDevice: true }));
+    try {
+      const Location = await import("expo-location");
+      const coords = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const [place] = await Location.reverseGeocodeAsync({
+        latitude: coords.coords.latitude,
+        longitude: coords.coords.longitude,
+      });
+      const city = place?.city || place?.subregion || place?.region || "Unknown";
+      setGeo((prev) => ({
+        ...prev,
+        deviceCity: city,
+        deviceCoords: {
+          lat: coords.coords.latitude,
+          lon: coords.coords.longitude,
+        },
+        devicePermission: "granted",
+        loadingDevice: false,
+      }));
+    } catch {
+      setGeo((prev) => ({ ...prev, loadingDevice: false }));
+    }
+  };
+
+  const handleRequestDeviceLocation = async () => {
+    if (Platform.OS === "web") return;
+    setGeo((prev) => ({ ...prev, loadingDevice: true }));
+    const Location = await import("expo-location");
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      setGeo((prev) => ({
+        ...prev,
+        devicePermission: "denied",
+        loadingDevice: false,
+      }));
+      return;
+    }
+    setGeo((prev) => ({ ...prev, devicePermission: "granted" }));
+    await fetchDeviceLocation();
+  };
 
   const loadProfileAndStats = async () => {
     if (!session?.user?.id) return;
@@ -83,13 +164,14 @@ export default function Profile() {
     try {
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("username, avatar_url")
+        .select("username, avatar_url, birth_date, gender")
         .eq("id", session.user.id)
         .single();
 
       if (profileData) {
         setUsername(profileData.username ?? "");
         setAvatarUrl(profileData.avatar_url ?? null);
+        setHasDemographics(!!profileData.birth_date && !!profileData.gender);
       }
 
       const [
@@ -103,22 +185,18 @@ export default function Profile() {
           .from("ses")
           .select("*", { count: "exact", head: true })
           .eq("created_by", session.user.id),
-
         supabase
           .from("ses_votes")
           .select("*", { count: "exact", head: true })
           .eq("user_id", session.user.id),
-
         supabase
           .from("follows")
           .select("*", { count: "exact", head: true })
           .eq("following_id", session.user.id),
-
         supabase
           .from("follows")
           .select("*", { count: "exact", head: true })
           .eq("follower_id", session.user.id),
-
         supabase
           .from("follows")
           .select("following_id")
@@ -129,25 +207,22 @@ export default function Profile() {
       setStats({
         published: publishedRes.count ?? 0,
         voted: votedRes.count ?? 0,
-        followers: followersRes.count ?? 0,
+        followers: cachedFollowers,
         following: followingRes.count ?? 0,
       });
 
       const followingIds = (followingUsersRes.data ?? [])
         .map((r: any) => r.following_id)
         .filter(Boolean);
-
-      let mappedFollowing: { id: string; username: string | null; avatar_url: string | null }[] = [];
       if (followingIds.length > 0) {
         const { data: followingProfiles } = await supabase
           .from("profiles")
           .select("id, username, avatar_url")
           .in("id", followingIds);
-        mappedFollowing = followingProfiles ?? [];
+        setFollowingUsers(followingProfiles ?? []);
       }
-      setFollowingUsers(mappedFollowing);
     } catch (error) {
-      console.error("Error loading profile:", error);
+      console.error(error);
     } finally {
       setLoadingStats(false);
     }
@@ -166,7 +241,67 @@ export default function Profile() {
     if (error) Alert.alert("Error", "Could not save username.");
   };
 
+  const handleBirthGenderConfirm = async ({
+    birthDate,
+    gender,
+  }: {
+    birthDate: Date;
+    gender: string;
+  }) => {
+    if (!session?.user?.id) return;
+    const { error } = await supabase.from("profiles").upsert({
+      id: session.user.id,
+      birth_date: birthDate.toISOString().split("T")[0],
+      gender,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) Alert.alert("Error", "Could not save your info.");
+    else setHasDemographics(true);
+    setShowBirthGenderModal(false);
+  };
+
+  const uploadAvatarBlob = async (blob: Blob, mimeType: string) => {
+    const ext = mimeType.split("/")[1] || "jpg";
+    const fileName = `${session!.user.id}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(fileName, blob, { upsert: true, contentType: mimeType });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+    await supabase.from("profiles").upsert({
+      id: session!.user.id,
+      avatar_url: data.publicUrl,
+      updated_at: new Date().toISOString(),
+    });
+    setAvatarUrl(data.publicUrl);
+  };
+
+  const pickAvatarWeb = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setAvatarUploading(true);
+      try {
+        await uploadAvatarBlob(file, file.type);
+      } catch {
+        Alert.alert("Error", "Could not upload avatar.");
+      } finally {
+        setAvatarUploading(false);
+      }
+    };
+    input.click();
+  };
+
   const pickAvatar = async () => {
+    if (Platform.OS === "web") {
+      pickAvatarWeb();
+      return;
+    }
+
+    const ImagePicker = await import("expo-image-picker");
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permission needed", "Allow photo access to set an avatar.");
@@ -184,13 +319,13 @@ export default function Profile() {
 
     setAvatarUploading(true);
     Animated.spring(avatarScale, {
-      toValue: 0.92,
+      toValue: 0.96,
       useNativeDriver: true,
     }).start();
 
     try {
       const uri = result.assets[0].uri;
-      const ext = uri.split(".").pop();
+      const ext = uri.split(".").pop() || "jpg";
       const fileName = `${session!.user.id}.${ext}`;
       const formData = new FormData();
       formData.append("file", {
@@ -225,13 +360,6 @@ export default function Profile() {
     }
   };
 
-  const handleSignOut = () => {
-    Alert.alert("Sign out", "Are you sure you want to leave?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: signOut },
-    ]);
-  };
-
   const googleName = session?.user?.user_metadata?.full_name ?? "";
   const googleAvatar = session?.user?.user_metadata?.avatar_url ?? null;
   const displayAvatar = avatarUrl || googleAvatar;
@@ -241,265 +369,238 @@ export default function Profile() {
   const userSegment = username.trim() || session?.user?.id || "profile";
 
   return (
-    <ThemedView className="flex-1">
+    <ThemedView className="flex-1 bg-white dark:bg-zinc-950">
       <SafeAreaView className="flex-1 w-full" edges={["top", "left", "right"]}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           className="flex-1"
         >
-          <View className="flex-row items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-900">
-            <ThemedText className="text-base font-black tracking-widest uppercase text-black dark:text-white">
+          <View className="flex-row items-center justify-between px-6 py-4 bg-white dark:bg-zinc-950">
+            <ThemedText className="text-base font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
               Profile
             </ThemedText>
-            <Pressable
-              onPress={handleSignOut}
-              className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/20 items-center justify-center active:opacity-70"
-            >
-              <Ionicons name="log-out-outline" size={16} color="#ef4444" />
-            </Pressable>
+
+            <View className="flex-row items-center gap-4">
+              <Pressable
+                onPress={() => router.push("/settings" as any)}
+                hitSlop={OK_HIT_SLOP}
+                className="active:opacity-60"
+              >
+                <Ionicons
+                  name="settings-outline"
+                  size={20}
+                  className="text-neutral-400 dark:text-neutral-500"
+                />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ padding: 16, paddingBottom: 100, gap: 16 }}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
           >
             <Animated.View
               style={{
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
-                gap: 16,
+                rowGap: 24,
               }}
             >
-              {/* ── Avatar + name hero ── */}
-              <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800">
-                <View className="items-center gap-4">
-                  <Animated.View
-                    style={{ transform: [{ scale: avatarScale }] }}
+              <View className="items-center mt-4">
+                <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
+                  <Pressable
+                    onPress={pickAvatar}
+                    hitSlop={OK_HIT_SLOP}
+                    className="relative active:opacity-90"
                   >
-                    <Pressable
-                      onPress={pickAvatar}
-                      className="relative active:opacity-80"
-                    >
-                      {displayAvatar ? (
-                        <Image
-                          source={{ uri: displayAvatar }}
-                          className="w-24 h-24 rounded-full"
-                        />
-                      ) : (
-                        <View className="w-24 h-24 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center">
-                          <ThemedText className="text-4xl font-black text-neutral-500 dark:text-neutral-400">
-                            {initial}
-                          </ThemedText>
-                        </View>
-                      )}
-                      <View className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-black dark:bg-white items-center justify-center border-2 border-neutral-100 dark:border-neutral-900">
-                        {avatarUploading ? (
-                          <ActivityIndicator size={12} color="white" />
-                        ) : (
-                          <Ionicons
-                            name="camera"
-                            size={13}
-                            color={Platform.OS === "ios" ? "white" : "black"}
-                          />
-                        )}
-                      </View>
-                    </Pressable>
-                  </Animated.View>
-
-                  {editing ? (
-                    <View className="w-full gap-2">
-                      <TextInput
-                        value={username}
-                        onChangeText={setUsername}
-                        placeholder="Your username"
-                        placeholderTextColor="#9ca3af"
-                        autoFocus
-                        className="border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-black text-black dark:text-white rounded-xl px-4 py-3 text-base font-medium text-center"
+                    {displayAvatar ? (
+                      <Image
+                        source={{ uri: displayAvatar }}
+                        className="w-20 h-20 rounded-full bg-neutral-100 dark:bg-zinc-900"
                       />
-                      <View className="flex-row gap-2">
-                        <TouchableOpacity
-                          onPress={saveUsername}
-                          activeOpacity={0.75}
-                          style={{
-                            flex: 1,
-                            height: 40,
-                            borderRadius: 999,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "#000",
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>
-                            {saving ? "Saving..." : "Save"}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => setEditing(false)}
-                          activeOpacity={0.75}
-                          style={{
-                            flex: 1,
-                            height: 40,
-                            borderRadius: 999,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "transparent",
-                            borderWidth: 1.5,
-                            borderColor: "#d1d5db",
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: "700", color: "#6b7280" }}>
-                            Cancel
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ) : (
-                    <View className="items-center gap-1">
-                      <View className="flex-row items-center gap-2">
-                        <ThemedText className="text-2xl font-black tracking-tight">
-                          {displayName}
+                    ) : (
+                      <View className="w-20 h-20 rounded-full bg-neutral-50 dark:bg-zinc-900 items-center justify-center border border-neutral-100 dark:border-zinc-800">
+                        <ThemedText className="text-2xl font-semibold text-neutral-400 dark:text-zinc-500">
+                          {initial}
                         </ThemedText>
-                        <Pressable
-                          onPress={() => setEditing(true)}
-                          className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center active:opacity-70"
-                        >
-                          <Ionicons name="pencil" size={12} color="#9ca3af" />
-                        </Pressable>
                       </View>
-                      <ThemedText className="text-sm text-neutral-400 dark:text-neutral-500">
-                        {email}
-                      </ThemedText>
+                    )}
+                    <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-zinc-800 items-center justify-center shadow-sm border border-neutral-100 dark:border-zinc-700">
+                      {avatarUploading ? (
+                        <ActivityIndicator size={10} color="#a3a3a3" />
+                      ) : (
+                        <Ionicons
+                          name="camera-outline"
+                          size={12}
+                          className="text-neutral-500 dark:text-neutral-400"
+                        />
+                      )}
                     </View>
-                  )}
-                </View>
+                  </Pressable>
+                </Animated.View>
+
+                {editing ? (
+                  <View className="w-full mt-4 gap-2">
+                    <TextInput
+                      value={username}
+                      onChangeText={setUsername}
+                      placeholder="Username"
+                      placeholderTextColor="#a3a3a3"
+                      autoFocus
+                      maxLength={25}
+                      className="bg-neutral-50 dark:bg-zinc-900 text-neutral-900 dark:text-neutral-50 rounded-xl px-4 py-2.5 text-sm font-medium text-center border border-neutral-200/50 dark:border-zinc-800"
+                    />
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={saveUsername}
+                        className="flex-1 h-9 rounded-lg items-center justify-center bg-neutral-900 dark:bg-white"
+                      >
+                        <Text className="text-xs font-semibold text-white dark:text-zinc-950">
+                          {saving ? "Saving..." : "Save"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setEditing(false)}
+                        className="flex-1 h-9 rounded-lg items-center justify-center border border-neutral-200 dark:border-zinc-800"
+                      >
+                        <Text className="text-xs font-semibold text-neutral-500 dark:text-zinc-400">
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View className="items-center mt-3">
+                    <View className="flex-row items-center gap-1.5">
+                      <ThemedText className="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">
+                        {displayName}
+                      </ThemedText>
+                      <Pressable
+                        onPress={() => setEditing(true)}
+                        hitSlop={OK_HIT_SLOP}
+                        className="active:opacity-50"
+                      >
+                        <Ionicons
+                          name="pencil"
+                          size={12}
+                          className="text-neutral-400"
+                        />
+                      </Pressable>
+                    </View>
+                    <ThemedText className="text-xs text-neutral-400 dark:text-zinc-500 mt-0.5">
+                      {email}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
 
-              <View className="flex-row gap-3">
+              <View className="flex-row justify-around py-2">
                 <Pressable
                   onPress={() =>
                     router.push(`/${userSegment}/followers` as any)
                   }
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                  className="items-center flex-1"
                 >
                   {loadingStats ? (
-                    <ActivityIndicator size="small" color="#9ca3af" />
+                    <ActivityIndicator size="small" color="#a3a3a3" />
                   ) : (
-                    <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
-                      {stats.followers}
+                    <ThemedText className="text-base font-bold text-neutral-900 dark:text-neutral-50">
+                      {cachedFollowers}
                     </ThemedText>
                   )}
-                  <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
-                    Followers
+                  <ThemedText className="text-[11px] text-neutral-400 dark:text-zinc-500 font-medium mt-0.5">
+                    followers
                   </ThemedText>
                 </Pressable>
+
+                <View className="w-[1px] h-6 bg-neutral-100 dark:bg-zinc-800 self-center" />
 
                 <Pressable
                   onPress={() =>
                     router.push(`/${userSegment}/following` as any)
                   }
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-900 rounded-2xl p-4 items-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                  className="items-center flex-1"
                 >
                   {loadingStats ? (
-                    <ActivityIndicator size="small" color="#9ca3af" />
+                    <ActivityIndicator size="small" color="#a3a3a3" />
                   ) : (
-                    <ThemedText className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
+                    <ThemedText className="text-base font-bold text-neutral-900 dark:text-neutral-50">
                       {stats.following}
                     </ThemedText>
                   )}
-                  <ThemedText className="text-[11px] text-neutral-500 font-bold uppercase tracking-wider mt-1">
-                    Following
+                  <ThemedText className="text-[11px] text-neutral-400 dark:text-zinc-500 font-medium mt-0.5">
+                    following
                   </ThemedText>
                 </Pressable>
               </View>
 
-              <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
+              {!hasDemographics && (
+                <DemographicsBanner
+                  onPress={() => setShowBirthGenderModal(true)}
+                />
+              )}
+
+              <GeoInfoCard
+                geo={geo}
+                onRequestDevice={handleRequestDeviceLocation}
+              />
+
+              <View className="bg-white dark:bg-zinc-900 rounded-2xl border border-neutral-100 dark:border-zinc-800/60 overflow-hidden shadow-sm shadow-black/[0.02]">
                 <Pressable
                   onPress={() => router.push(`/${userSegment}/sess` as any)}
-                  className="flex-row items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800 active:opacity-70"
+                  className="flex-row items-center justify-between p-4 border-b border-neutral-50 dark:border-zinc-800/40 active:bg-neutral-50 dark:active:bg-zinc-800/30"
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 items-center justify-center">
-                      <Ionicons name="grid-outline" size={14} color="#3b82f6" />
-                    </View>
-                    <ThemedText className="text-base font-medium">
+                    <Ionicons
+                      name="grid-outline"
+                      size={16}
+                      className="text-neutral-400 dark:text-neutral-500"
+                    />
+                    <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                       My Sess
                     </ThemedText>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    className="text-neutral-300 dark:text-zinc-600"
+                  />
                 </Pressable>
 
                 <Pressable
                   onPress={() => router.push(`/${userSegment}/votes` as any)}
-                  className="flex-row items-center justify-between p-4 active:opacity-70"
+                  className="flex-row items-center justify-between p-4 active:bg-neutral-50 dark:active:bg-zinc-800/30"
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 items-center justify-center">
-                      <Ionicons
-                        name="stats-chart-outline"
-                        size={14}
-                        color="#8b5cf6"
-                      />
-                    </View>
-                    <ThemedText className="text-base font-medium">
+                    <Ionicons
+                      name="bar-chart-outline"
+                      size={16}
+                      className="text-neutral-400 dark:text-neutral-500"
+                    />
+                    <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                       My Votes
                     </ThemedText>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    className="text-neutral-300 dark:text-zinc-600"
+                  />
                 </Pressable>
               </View>
-
-              {followingUsers.length > 0 && (
-                <View className="gap-3">
-                  <ThemedText className="text-xs font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">
-                    Following
-                  </ThemedText>
-                  <View className="bg-neutral-100 dark:bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
-                    {followingUsers.map((user, index) => {
-                      const name = user.username ?? "Unknown";
-                      const initial = name.charAt(0).toUpperCase();
-                      return (
-                        <TouchableOpacity
-                          key={user.id}
-                          activeOpacity={0.7}
-                          onPress={() =>
-                            router.push(`/${user.username}/page` as any)
-                          }
-                          className={`flex-row items-center gap-3 p-4 active:opacity-70 ${
-                            index < followingUsers.length - 1
-                              ? "border-b border-neutral-200 dark:border-neutral-800"
-                              : ""
-                          }`}
-                        >
-                          {user.avatar_url ? (
-                            <Image
-                              source={{ uri: user.avatar_url }}
-                              className="w-9 h-9 rounded-full"
-                            />
-                          ) : (
-                            <View className="w-9 h-9 rounded-full bg-neutral-200 dark:bg-neutral-800 items-center justify-center">
-                              <Text className="text-sm font-black text-neutral-500 dark:text-neutral-400">
-                                {initial}
-                              </Text>
-                            </View>
-                          )}
-                          <ThemedText className="text-sm font-semibold flex-1">
-                            {name}
-                          </ThemedText>
-                          <Ionicons
-                            name="chevron-forward"
-                            size={16}
-                            color="#9ca3af"
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {showBirthGenderModal && (
+        <BirthDateGenderModal
+          visible={showBirthGenderModal}
+          onDismiss={() => setShowBirthGenderModal(false)}
+          onConfirm={handleBirthGenderConfirm}
+        />
+      )}
     </ThemedView>
   );
 }

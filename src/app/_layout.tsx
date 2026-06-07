@@ -1,188 +1,91 @@
-import { useAuthStore, useProfileStore } from "@/stores";
-import { supabase } from "@/utils/supabase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Linking from "expo-linking";
-import {
-  DarkTheme,
-  DefaultTheme,
-  Slot,
-  ThemeProvider,
-  useRouter,
-  useSegments,
-} from "expo-router";
+import { AuthAndGeoGate } from "@/components/auth-geo-gate";
+import { useTerminalTelemetry } from "@/hooks/useTerminalTelemetry";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { Platform, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "../global.css";
 
-WebBrowser.maybeCompleteAuthSession();
+if (Platform.OS !== "web") {
+  const { configureGoogleSignin } = require("@/utils/googleSignin");
+  configureGoogleSignin();
+}
 
-const HAS_LAUNCHED_KEY = "@has_launched";
+const queryClient = new QueryClient();
 
-function AuthGate() {
-  const { session, initializing, init } = useAuthStore();
-  const segments = useSegments();
-  const router = useRouter();
-  const [hasUsername, setHasUsername] = useState<boolean | null>(null);
-  const [checkingUsername, setCheckingUsername] = useState(false);
-  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
-  const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
+export default function RootLayout() {
+  const systemColorScheme = useColorScheme();
+  const [colorScheme, setColorScheme] = useState(systemColorScheme);
+  const [isTelegramValid, setIsTelegramValid] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const unsub = init();
-    return unsub;
-  }, []);
+  useTerminalTelemetry();
 
   useEffect(() => {
-    async function checkOnboardingStatus() {
-      try {
-        const hasLaunched = await AsyncStorage.getItem(HAS_LAUNCHED_KEY);
-        setIsFirstLaunch(hasLaunched !== "true");
-      } catch {
-        setIsFirstLaunch(false);
-      } finally {
-        setCheckingOnboarding(false);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const tg = (window as any).Telegram?.WebApp;
+
+      if (tg && tg.initData) {
+        tg.ready();
+        tg.expand();
+        setColorScheme(tg.colorScheme || systemColorScheme);
+        setIsTelegramValid(true);
+
+        const handleThemeChange = () => setColorScheme(tg.colorScheme);
+        tg.onEvent("themeChanged", handleThemeChange);
+        return () => tg.offEvent("themeChanged", handleThemeChange);
+      } else {
+        setIsTelegramValid(false);
       }
+    } else {
+      setIsTelegramValid(true);
     }
-    checkOnboardingStatus();
-  }, []);
+  }, [systemColorScheme]);
 
-  useEffect(() => {
-    const handleUrl = async (url: string) => {
-      if (!url.includes("auth/callback")) return;
-      const fragment = url.includes("#")
-        ? url.split("#")[1]
-        : url.split("?")[1];
-      if (!fragment) return;
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      if (accessToken && refreshToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-      }
-    };
-    Linking.getInitialURL().then((url) => {
-      if (url) handleUrl(url);
-    });
-    const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
-    return () => sub.remove();
-  }, []);
+  if (isTelegramValid === null) {
+    return null;
+  }
 
-  useEffect(() => {
-    if (!session?.user) {
-      setHasUsername(null);
-      return;
-    }
-    setCheckingUsername(true);
-    supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        setHasUsername(!!data?.username);
-        setCheckingUsername(false);
-      });
-  }, [session?.user?.id]);
-
-  const sessionUserId = useAuthStore((s) => s.session?.user?.id);
-  const fetchBookmarks = useProfileStore((s) => s.fetchBookmarks);
-
-  useEffect(() => {
-    if (sessionUserId) fetchBookmarks(sessionUserId);
-  }, [sessionUserId]);
-
-  useEffect(() => {
-    if (initializing || checkingUsername || checkingOnboarding) return;
-
-    const inOnboarding = segments[0] === "onboard";
-    const inAuthGroup = segments[0] === "auth";
-    const inUsernameSetup = segments[0] === "username-setup";
-
-    if (isFirstLaunch) {
-      if (!inOnboarding) router.replace("/onboard");
-      return;
-    }
-
-    if (!session) {
-      if (!inAuthGroup) router.replace("/auth");
-      return;
-    }
-
-    if (hasUsername === false && !inUsernameSetup) {
-      router.replace("/username-setup");
-      return;
-    }
-
-    if (
-      hasUsername === true &&
-      (inAuthGroup || inUsernameSetup || inOnboarding)
-    ) {
-      router.replace("/");
-    }
-  }, [
-    session,
-    initializing,
-    segments,
-    hasUsername,
-    checkingUsername,
-    checkingOnboarding,
-    isFirstLaunch,
-  ]);
-
-  useEffect(() => {
-    if (!checkingOnboarding && isFirstLaunch) {
-      const interval = setInterval(async () => {
-        try {
-          const hasLaunched = await AsyncStorage.getItem(HAS_LAUNCHED_KEY);
-          if (hasLaunched === "true") {
-            setIsFirstLaunch(false);
-            clearInterval(interval);
-          }
-        } catch {}
-      }, 300);
-      return () => clearInterval(interval);
-    }
-  }, [checkingOnboarding, isFirstLaunch]);
-
-  useEffect(() => {
-    if (!session?.user?.id || hasUsername !== false) return;
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", session.user.id)
-        .maybeSingle();
-      if (data?.username) {
-        setHasUsername(true);
-        clearInterval(interval);
-      }
-    }, 400);
-    return () => clearInterval(interval);
-  }, [session?.user?.id, hasUsername]);
-
-  if (initializing || checkingOnboarding || (session && checkingUsername)) {
+  if (!isTelegramValid && Platform.OS === "web") {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <ActivityIndicator color="#000" size="large" />
+      <View style={styles.fallbackContainer}>
+        <Text style={styles.fallbackText}>
+          Please open this app via the Telegram Bot!
+        </Text>
       </View>
     );
   }
 
-  return <Slot />;
-}
+  const activeTheme = colorScheme === "dark" ? DarkTheme : DefaultTheme;
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-      <AuthGate />
-    </ThemeProvider>
+    <GestureHandlerRootView className="flex-1">
+      <BottomSheetModalProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider value={activeTheme}>
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            <AuthAndGeoGate />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
+const styles = StyleSheet.create({
+  fallbackContainer: {
+    flex: 1,
+    backgroundColor: "#17212b",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  fallbackText: {
+    color: "#ffffff",
+    fontSize: 18,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+});

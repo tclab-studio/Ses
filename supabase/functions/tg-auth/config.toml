@@ -1,0 +1,2 @@
+[functions.tg-auth]
+verify_jwt = false

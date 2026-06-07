@@ -1,71 +1,75 @@
+import { zustandAsyncStorage } from "@/utils/storage";
 import { supabase } from "@/utils/supabase";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+const CACHE_TTL = 5 * 60_000;
 
 interface ProfileState {
-  bookmarkedIds: string[];
-  fetchBookmarks: (userId: string) => Promise<void>;
-  toggleBookmark: (userId: string, sesId: string) => Promise<void>;
+  likedIds: string[];
+  lastFetchedLikes: number | null;
+  fetchLikes: (userId: string, force?: boolean) => Promise<void>;
+  toggleLike: (userId: string, sesId: string) => Promise<void>;
 }
 
-export const useProfileStore = create<ProfileState>((set, get) => ({
-  bookmarkedIds: [],
+export const useProfileStore = create<ProfileState>()(
+  persist(
+    (set, get) => ({
+      likedIds: [],
+      lastFetchedLikes: null,
 
-  fetchBookmarks: async (userId) => {
-    const { data, error } = await supabase
-      .from("bookmarks")
-      .select("ses_id")
-      .eq("user_id", userId);
+      fetchLikes: async (userId, force = false) => {
+        const { lastFetchedLikes } = get();
+        if (
+          !force &&
+          lastFetchedLikes &&
+          Date.now() - lastFetchedLikes < CACHE_TTL
+        )
+          return;
 
-    if (error) {
-      return;
-    }
+        const { data, error } = await supabase
+          .from("likes")
+          .select("ses_id")
+          .eq("user_id", userId);
 
-    set({
-      bookmarkedIds: (data ?? []).map((item) => item.ses_id),
-    });
-  },
+        if (error) return;
 
-  toggleBookmark: async (userId, sesId) => {
-    const bookmarkedIds = get().bookmarkedIds;
-    const isBookmarked = bookmarkedIds.includes(sesId);
-
-    if (isBookmarked) {
-      // Optimistic UI Update: Remove item instantly
-      set({
-        bookmarkedIds: bookmarkedIds.filter((id) => id !== sesId),
-      });
-
-      const { error } = await supabase
-        .from("bookmarks")
-        .delete()
-        .eq("user_id", userId)
-        .eq("ses_id", sesId);
-
-      if (error) {
-        // Rollback if DB request failed
         set({
-          bookmarkedIds,
+          likedIds: (data ?? []).map((item) => item.ses_id),
+          lastFetchedLikes: Date.now(),
         });
-      }
+      },
 
-      return;
-    }
+      toggleLike: async (userId, sesId) => {
+        const likedIds = get().likedIds;
+        const isLiked = likedIds.includes(sesId);
 
-    // Optimistic UI Update: Add item instantly
-    set({
-      bookmarkedIds: [...bookmarkedIds, sesId],
-    });
+        if (isLiked) {
+          set({ likedIds: likedIds.filter((id) => id !== sesId) });
+          const { error } = await supabase
+            .from("likes")
+            .delete()
+            .eq("user_id", userId)
+            .eq("ses_id", sesId);
+          if (error) set({ likedIds });
+          return;
+        }
 
-    const { error } = await supabase.from("bookmarks").insert({
-      user_id: userId,
-      ses_id: sesId,
-    });
-
-    if (error) {
-      // Rollback if DB request failed
-      set({
-        bookmarkedIds,
-      });
-    }
-  },
-}));
+        set({ likedIds: [...likedIds, sesId] });
+        const { error } = await supabase.from("likes").insert({
+          user_id: userId,
+          ses_id: sesId,
+        });
+        if (error) set({ likedIds });
+      },
+    }),
+    {
+      name: "profile-storage",
+      storage: zustandAsyncStorage,
+      partialize: (state) => ({
+        likedIds: state.likedIds,
+        lastFetchedLikes: state.lastFetchedLikes,
+      }),
+    },
+  ),
+);

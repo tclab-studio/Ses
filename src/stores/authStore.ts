@@ -1,9 +1,8 @@
-import { redirectUrl, supabase } from "@/utils/supabase";
+import { syncGeoOnAuth } from "@/utils/geo";
+import { supabase } from "@/utils/supabase";
 import { Session } from "@supabase/supabase-js";
-import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 import { create } from "zustand";
-
-WebBrowser.maybeCompleteAuthSession();
 
 type AuthStore = {
   session: Session | null;
@@ -12,9 +11,23 @@ type AuthStore = {
   setSession: (session: Session | null) => void;
   setInitializing: (v: boolean) => void;
   signInWithGoogle: () => Promise<void>;
+  signInWithTelegram: () => Promise<void>;
   signOut: () => Promise<void>;
   init: () => () => void;
 };
+
+async function doGoogleSignIn() {
+  const { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } =
+    await import("@react-native-google-signin/google-signin");
+
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+  if (!isSuccessResponse(response)) return null;
+
+  const idToken = response.data?.idToken;
+  if (!idToken) throw new Error("No idToken returned from Google");
+  return { idToken, GoogleSignin, isErrorWithCode, statusCodes };
+}
 
 export const useAuthStore = create<AuthStore>((set) => ({
   session: null,
@@ -27,11 +40,17 @@ export const useAuthStore = create<AuthStore>((set) => ({
   init: () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       set({ session, initializing: false });
+      if (session?.user?.id) {
+        syncGeoOnAuth(session.user.id);
+      }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         set({ session });
+        if (session?.user?.id) {
+          syncGeoOnAuth(session.user.id);
+        }
       },
     );
 
@@ -39,39 +58,85 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   signInWithGoogle: async () => {
+    if (Platform.OS === "web") {
+      set({ loading: true });
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+          },
+        });
+        if (error) throw error;
+      } catch (err) {
+        console.error("Google OAuth error:", err);
+      } finally {
+        set({ loading: false });
+      }
+      return;
+    }
+
     set({ loading: true });
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
-      });
-      if (error) throw error;
+      const result = await doGoogleSignIn();
+      if (!result) return;
+      const { idToken } = result;
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url!,
-        redirectUrl,
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (error) throw error;
+    } catch (err: any) {
+      const isErrorWithCode = (await import("@react-native-google-signin/google-signin")).isErrorWithCode;
+      const statusCodes = (await import("@react-native-google-signin/google-signin")).statusCodes;
+      if (isErrorWithCode(err)) {
+        switch (err.code) {
+          case statusCodes.SIGN_IN_CANCELLED:
+            break;
+          case statusCodes.IN_PROGRESS:
+            break;
+          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+            console.error("Play Services unavailable");
+            break;
+          default:
+            console.error("Google Sign-In error:", err);
+        }
+      } else {
+        console.error("Unexpected error during Google Sign-In:", err);
+      }
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  signInWithTelegram: async () => {
+    set({ loading: true });
+    try {
+      const tg = (window as any).Telegram?.WebApp;
+      if (!tg?.initData) throw new Error("No Telegram initData");
+
+      const res = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/tg-auth`,
         {
-          showInRecents: false,
-          preferEphemeralSession: true,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData: tg.initData }),
         },
       );
 
-      if (result.type === "success") {
-        const fragment = result.url.includes("#")
-          ? result.url.split("#")[1]
-          : result.url.split("?")[1];
-        const params = new URLSearchParams(fragment);
-        const accessToken = params.get("access_token");
-        const refreshToken = params.get("refresh_token");
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-        }
-      }
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error ?? "TG auth failed");
+
+      const { error } = await supabase.auth.setSession({
+        access_token: json.access_token,
+        refresh_token: json.refresh_token,
+      });
+
+      if (error) throw error;
     } catch (err) {
-      console.error("Google OAuth failed:", err);
+      console.error("Telegram Sign-In error:", err);
     } finally {
       set({ loading: false });
     }
@@ -79,6 +144,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
+    if (Platform.OS !== "web") {
+      try {
+        const { GoogleSignin } = await import("@react-native-google-signin/google-signin");
+        await GoogleSignin.revokeAccess();
+        await GoogleSignin.signOut();
+      } catch {}
+    }
     set({ session: null });
   },
 }));

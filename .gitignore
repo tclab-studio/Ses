@@ -44,3 +44,7 @@ app-example
 
 # images
 /assets/images/onboard
+
+# supabase .temp
+/supabase/.temp
+.vercel

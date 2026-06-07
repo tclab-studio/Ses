@@ -4,15 +4,25 @@ import { supabase } from "@/utils/supabase";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+const CACHE_TTL = 2 * 60_000;
+
 type UserActivityStore = {
   createdSess: SesItem[];
   votedSess: SesItem[];
   bookmarkedSess: SesItem[];
   isLoading: boolean;
-  fetchCreatedSess: (userId: string) => Promise<void>;
-  fetchVotedSess: (userId: string) => Promise<void>;
-  fetchBookmarkedSess: (userId: string) => Promise<void>;
+  lastFetchedCreated: number | null;
+  lastFetchedVoted: number | null;
+  lastFetchedBookmarked: number | null;
+  fetchCreatedSess: (userId: string, force?: boolean) => Promise<void>;
+  fetchVotedSess: (userId: string, force?: boolean) => Promise<void>;
+  fetchBookmarkedSess: (userId: string, force?: boolean) => Promise<void>;
   clearActivity: () => void;
+};
+
+const isStale = (lastFetched: number | null) => {
+  if (!lastFetched) return true;
+  return Date.now() - lastFetched > CACHE_TTL;
 };
 
 const buildFullSesItems = async (
@@ -78,13 +88,18 @@ const buildFullSesItems = async (
 
 export const useUserActivityStore = create<UserActivityStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       createdSess: [],
       votedSess: [],
       bookmarkedSess: [],
       isLoading: false,
+      lastFetchedCreated: null,
+      lastFetchedVoted: null,
+      lastFetchedBookmarked: null,
 
-      fetchCreatedSess: async (userId) => {
+      fetchCreatedSess: async (userId, force = false) => {
+        if (!force && !isStale(get().lastFetchedCreated)) return;
+
         set({ isLoading: true });
         const { data } = await supabase
           .from("ses")
@@ -95,12 +110,14 @@ export const useUserActivityStore = create<UserActivityStore>()(
         if (data) {
           const ids = data.map((d) => d.id);
           const items = await buildFullSesItems(ids, userId);
-          set({ createdSess: items });
+          set({ createdSess: items, lastFetchedCreated: Date.now() });
         }
         set({ isLoading: false });
       },
 
-      fetchVotedSess: async (userId) => {
+      fetchVotedSess: async (userId, force = false) => {
+        if (!force && !isStale(get().lastFetchedVoted)) return;
+
         set({ isLoading: true });
         const { data } = await supabase
           .from("ses_votes")
@@ -110,32 +127,49 @@ export const useUserActivityStore = create<UserActivityStore>()(
         if (data) {
           const ids = [...new Set(data.map((d) => d.ses_id))];
           const items = await buildFullSesItems(ids, userId);
-          set({ votedSess: items });
+          set({ votedSess: items, lastFetchedVoted: Date.now() });
         }
         set({ isLoading: false });
       },
 
-      fetchBookmarkedSess: async (userId) => {
+      fetchBookmarkedSess: async (userId, force = false) => {
+        if (!force && !isStale(get().lastFetchedBookmarked)) return;
+
         set({ isLoading: true });
         const { data } = await supabase
-          .from("bookmarks")
+          .from("likes")
           .select("ses_id")
           .eq("user_id", userId);
 
         if (data) {
           const ids = data.map((d) => d.ses_id);
           const items = await buildFullSesItems(ids, userId);
-          set({ bookmarkedSess: items });
+          set({ bookmarkedSess: items, lastFetchedBookmarked: Date.now() });
         }
         set({ isLoading: false });
       },
 
       clearActivity: () =>
-        set({ createdSess: [], votedSess: [], bookmarkedSess: [] }),
+        set({
+          createdSess: [],
+          votedSess: [],
+          bookmarkedSess: [],
+          lastFetchedCreated: null,
+          lastFetchedVoted: null,
+          lastFetchedBookmarked: null,
+        }),
     }),
     {
       name: "user-activity-storage",
       storage: zustandAsyncStorage,
+      partialize: (state) => ({
+        createdSess: state.createdSess,
+        votedSess: state.votedSess,
+        bookmarkedSess: state.bookmarkedSess,
+        lastFetchedCreated: state.lastFetchedCreated,
+        lastFetchedVoted: state.lastFetchedVoted,
+        lastFetchedBookmarked: state.lastFetchedBookmarked,
+      }),
     },
   ),
 );

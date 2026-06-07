@@ -4,7 +4,7 @@ import { ThemedView } from "@/components/themed-view";
 import { useAuthStore, useUserActivityStore } from "@/stores";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -46,7 +46,7 @@ export default function CreatedSessScreen() {
             <Ionicons name="chevron-back" size={24} color="#9ca3af" />
           </TouchableOpacity>
           <ThemedText className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-50 ml-1">
-            Created Sessions
+            Created Sess
           </ThemedText>
         </View>
 

@@ -1,15 +1,48 @@
 import { GoogleButton } from "@/components/google-button";
 import { useAuth } from "@/hooks/useAuth";
-import React, { useEffect, useRef } from "react";
-import { Animated, StatusBar, Text, View } from "react-native";
+import { useEnvironment } from "@/hooks/useEnvironment";
+import { useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import { Animated, Platform, Pressable, StatusBar, Text, TouchableOpacity, View } from "react-native";
+
+function TelegramButton({ onPress, loading }: { onPress: () => void; loading: boolean }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={loading}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#2AABEE",
+        borderRadius: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        opacity: loading ? 0.6 : 1,
+        gap: 10,
+      }}
+    >
+      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>
+        {loading ? "Signing in…" : "Continue with Telegram"}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function AuthScreen() {
-  const { loading, signInWithGoogle } = useAuth();
+  const { loading, signInWithGoogle, signInWithTelegram } = useAuth();
+  const { isTelegram } = useEnvironment();
+  const router = useRouter();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
+    if (isTelegram) {
+      signInWithTelegram();
+      return;
+    }
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -23,7 +56,15 @@ export default function AuthScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [isTelegram]);
+
+  if (isTelegram) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#17212b", alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: "#fff", fontSize: 16 }}>Signing in with Telegram…</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-white">
@@ -42,10 +83,40 @@ export default function AuthScreen() {
           </Text>
         </View>
 
-        <View className="gap-4">
-          <GoogleButton onPress={signInWithGoogle} loading={loading} />
-          <Text className="text-center text-neutral-400 text-xs leading-relaxed">
-            By continuing you agree to our Terms & Privacy Policy.
+        <View className="gap-3">
+          {Platform.OS !== "web" ? (
+            <GoogleButton onPress={signInWithGoogle} loading={loading} />
+          ) : (
+            <GoogleButton onPress={signInWithGoogle} loading={loading} />
+          )}
+
+          <Text className="text-center text-neutral-400 text-2xs leading-relaxed">
+            By continuing you agree to our{" "}
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/settings/legal",
+                  params: { section: "terms" },
+                } as any)
+              }
+            >
+              <Text className="text-neutral-800 font-bold underline">
+                Terms
+              </Text>
+            </Pressable>
+            {" & "}
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/settings/legal",
+                  params: { section: "privacy" },
+                } as any)
+              }
+            >
+              <Text className="text-neutral-800 font-bold underline">
+                Privacy Policy
+              </Text>
+            </Pressable>
           </Text>
         </View>
       </Animated.View>

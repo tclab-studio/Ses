@@ -83,27 +83,56 @@ const LargeSecureStoreAdapter = {
   },
 };
 
+const LocalStorageAdapter = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  },
+};
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 
-const storage = Platform.OS === "web" ? undefined : LargeSecureStoreAdapter;
+const storage =
+  Platform.OS === "web" ? LocalStorageAdapter : LargeSecureStoreAdapter;
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === "web",
   },
 });
 
-export const redirectUrl = AuthSession.makeRedirectUri({
-  scheme: "ses",
-  path: "auth/callback",
-});
+export const redirectUrl =
+  Platform.OS !== "web"
+    ? AuthSession.makeRedirectUri({ scheme: "ses", path: "auth/callback" })
+    : typeof window !== "undefined"
+      ? `${window.location.origin}/auth/callback`
+      : "";
 
 export async function clearAuthStorage(): Promise<void> {
   try {
+    if (Platform.OS === "web") {
+      Object.keys(localStorage)
+        .filter((k) => k.includes("supabase") || k.includes("sb-"))
+        .forEach((k) => localStorage.removeItem(k));
+      return;
+    }
     const keys = ["supabase.auth.token", "sb-access-token", "sb-refresh-token"];
     await Promise.all(keys.map((k) => clearChunkedKey(k).catch(() => {})));
     await AsyncStorage.multiRemove(
