@@ -5,10 +5,14 @@ import { persist } from "zustand/middleware";
 
 const CACHE_TTL = 60_000;
 
+export type FeedFilter = "all" | "following" | "topics" | "trending";
+
 type FeedStore = {
   feed: SesItem[];
   lastFetched: number | null;
   realtimeConnected: boolean;
+  selectedFilter: FeedFilter;
+  bookmarkedSessIds: string[];
   setFeed: (items: SesItem[]) => void;
   optimisticVote: (sesId: string, optionId: string) => void;
   optimisticUnvote: (sesId: string, optionId: string) => void;
@@ -19,6 +23,9 @@ type FeedStore = {
   invalidate: () => void;
   isStale: () => boolean;
   setRealtimeConnected: (v: boolean) => void;
+  setSelectedFilter: (f: FeedFilter) => void;
+  bookmarkSes: (sesId: string) => void;
+  unbookmarkSes: (sesId: string) => void;
 };
 
 export const useFeedStore = create<FeedStore>()(
@@ -27,6 +34,8 @@ export const useFeedStore = create<FeedStore>()(
       feed: [],
       lastFetched: null,
       realtimeConnected: false,
+      selectedFilter: "all",
+      bookmarkedSessIds: [],
 
       setFeed: (feed) => set({ feed, lastFetched: Date.now() }),
 
@@ -115,6 +124,20 @@ export const useFeedStore = create<FeedStore>()(
       },
 
       setRealtimeConnected: (realtimeConnected) => set({ realtimeConnected }),
+
+      setSelectedFilter: (selectedFilter) => set({ selectedFilter }),
+
+      bookmarkSes: (sesId) =>
+        set((state) => ({
+          bookmarkedSessIds: state.bookmarkedSessIds.includes(sesId)
+            ? state.bookmarkedSessIds
+            : [...state.bookmarkedSessIds, sesId],
+        })),
+
+      unbookmarkSes: (sesId) =>
+        set((state) => ({
+          bookmarkedSessIds: state.bookmarkedSessIds.filter((id) => id !== sesId),
+        })),
     }),
     {
       name: "feed-storage",
@@ -122,6 +145,8 @@ export const useFeedStore = create<FeedStore>()(
       partialize: (state) => ({
         feed: state.feed,
         lastFetched: state.lastFetched,
+        selectedFilter: state.selectedFilter,
+        bookmarkedSessIds: state.bookmarkedSessIds,
       }),
     },
   ),

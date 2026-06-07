@@ -10,11 +10,13 @@ import {
 import { useAuthStore, useFeedStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   Animated,
   FlatList,
   RefreshControl,
+  ScrollView,
   Text,
   TouchableOpacity,
   useColorScheme,
@@ -54,6 +56,15 @@ const EmptyState = () => (
   </View>
 );
 
+type FilterOption = { key: "all" | "following" | "topics" | "trending"; label: string; icon: string };
+
+const FILTERS: FilterOption[] = [
+  { key: "all", label: "All", icon: "apps-outline" },
+  { key: "following", label: "Following", icon: "people-outline" },
+  { key: "topics", label: "Topics", icon: "pricetags-outline" },
+  { key: "trending", label: "Trending", icon: "flame-outline" },
+];
+
 export default function HomeScreen() {
   const { session } = useAuthStore();
   const {
@@ -65,15 +76,19 @@ export default function HomeScreen() {
     prependItem,
     markAsVoted,
     markAsUnvoted,
+    selectedFilter,
+    setSelectedFilter,
   } = useFeedStore();
 
+  const router = useRouter();
   const scheme = useColorScheme();
-  const colors = Colors[scheme === "dark" ? "dark" : "light"];
+  const isDark = scheme === "dark";
+  const colors = Colors[isDark ? "dark" : "light"];
 
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState(0);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const fadeIn = () => {
@@ -84,6 +99,16 @@ export default function HomeScreen() {
     }).start();
   };
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", session.user.id)
+      .eq("read", false)
+      .then(({ count }) => setUnreadCount(count ?? 0));
+  }, [session?.user?.id]);
+
   const load = useCallback(
     async (force = false) => {
       if (!force && !isStale()) {
@@ -92,25 +117,72 @@ export default function HomeScreen() {
       }
 
       try {
-        const { data: sesData } = await supabase
+        let query = supabase
           .from("ses")
-          .select("id, question, vote_type, created_at, created_by")
-          .order("created_at", { ascending: false });
+          .select("id, question, description, vote_type, created_at, created_by, end_date, is_anonymous");
 
+        if (selectedFilter === "trending") {
+          const cutoff = new Date(Date.now() - 48 * 3600000).toISOString();
+          query = query.gte("created_at", cutoff).order("vote_count", { ascending: false });
+        } else {
+          query = query.order("created_at", { ascending: false });
+        }
+
+        const { data: sesData } = await query;
         if (!sesData) return;
 
-        const creatorIds = [...new Set(sesData.map((s) => s.created_by))];
+        let filteredSesData = sesData;
 
-        const [optionsRes, votesRes, profilesRes] = await Promise.all([
+        if (selectedFilter === "following" && session?.user?.id) {
+          const { data: follows } = await supabase
+            .from("follows")
+            .select("following_id")
+            .eq("follower_id", session.user.id);
+          const followingIds = new Set((follows ?? []).map((f) => f.following_id));
+          filteredSesData = sesData.filter((s) => followingIds.has(s.created_by));
+        }
+
+        if (selectedFilter === "topics" && session?.user?.id) {
+          const { data: userTopics } = await supabase
+            .from("user_topics")
+            .select("topic_id")
+            .eq("user_id", session.user.id);
+          const topicIds = (userTopics ?? []).map((t) => t.topic_id);
+          if (topicIds.length > 0) {
+            const { data: sesTopics } = await supabase
+              .from("ses_topics")
+              .select("ses_id")
+              .in("topic_id", topicIds);
+            const sesIdsWithTopics = new Set((sesTopics ?? []).map((t) => t.ses_id));
+            filteredSesData = sesData.filter((s) => sesIdsWithTopics.has(s.id));
+          } else {
+            filteredSesData = [];
+          }
+        }
+
+        const creatorIds = [...new Set(filteredSesData.map((s) => s.created_by))];
+        const sesIds = filteredSesData.map((s) => s.id);
+
+        if (sesIds.length === 0) {
+          setFeed([]);
+          return;
+        }
+
+        const [optionsRes, votesRes, profilesRes, topicsRes] = await Promise.all([
           supabase
             .from("ses_options")
             .select("id, ses_id, text, order")
+            .in("ses_id", sesIds)
             .order("order"),
-          supabase.from("ses_votes").select("ses_id, option_id, user_id"),
+          supabase.from("ses_votes").select("ses_id, option_id, user_id").in("ses_id", sesIds),
           supabase
             .from("profiles")
             .select("id, username, avatar_url")
             .in("id", creatorIds),
+          supabase
+            .from("ses_topics")
+            .select("ses_id, topics(id, name, emoji)")
+            .in("ses_id", sesIds),
         ]);
 
         const optionsBySes: Record<string, { id: string; text: string }[]> = {};
@@ -122,30 +194,28 @@ export default function HomeScreen() {
         const voteCounts: Record<string, number> = {};
         const userVotedSes = new Set<string>();
         const selectedOptionsBySes: Record<string, string[]> = {};
-
         votesRes.data?.forEach((v) => {
           voteCounts[v.ses_id] = (voteCounts[v.ses_id] ?? 0) + 1;
           if (v.user_id === session?.user?.id) {
             userVotedSes.add(v.ses_id);
-            if (!selectedOptionsBySes[v.ses_id])
-              selectedOptionsBySes[v.ses_id] = [];
+            if (!selectedOptionsBySes[v.ses_id]) selectedOptionsBySes[v.ses_id] = [];
             selectedOptionsBySes[v.ses_id].push(v.option_id);
           }
         });
 
-        const profilesById: Record<
-          string,
-          { username: string | null; avatar_url: string | null }
-        > = {};
+        const profilesById: Record<string, { username: string | null; avatar_url: string | null }> = {};
         profilesRes.data?.forEach((p) => {
-          profilesById[p.id] = {
-            username: p.username,
-            avatar_url: p.avatar_url,
-          };
+          profilesById[p.id] = { username: p.username, avatar_url: p.avatar_url };
+        });
+
+        const topicsBySes: Record<string, { id: string; name: string; emoji: string | null }[]> = {};
+        topicsRes.data?.forEach((row: any) => {
+          if (!topicsBySes[row.ses_id]) topicsBySes[row.ses_id] = [];
+          if (row.topics) topicsBySes[row.ses_id].push(row.topics);
         });
 
         setFeed(
-          sesData.map((s) => ({
+          filteredSesData.map((s) => ({
             ...s,
             options: optionsBySes[s.id] ?? [],
             option_count: (optionsBySes[s.id] ?? []).length,
@@ -153,6 +223,7 @@ export default function HomeScreen() {
             has_voted: userVotedSes.has(s.id),
             selected_option_ids: selectedOptionsBySes[s.id] ?? [],
             author: profilesById[s.created_by] ?? null,
+            topics: topicsBySes[s.id] ?? [],
           })),
         );
       } finally {
@@ -161,7 +232,7 @@ export default function HomeScreen() {
         fadeIn();
       }
     },
-    [session?.user?.id, isStale],
+    [session?.user?.id, isStale, selectedFilter],
   );
 
   useEffect(() => {
@@ -179,14 +250,11 @@ export default function HomeScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "ses_votes" },
         async (payload) => {
-          const sesId =
-            (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
+          const sesId = (payload.new as any)?.ses_id ?? (payload.old as any)?.ses_id;
           if (!sesId) return;
 
-          const userId =
-            (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
-          const optionId =
-            (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
+          const userId = (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
+          const optionId = (payload.new as any)?.option_id ?? (payload.old as any)?.option_id;
 
           supabase
             .from("ses_votes")
@@ -208,30 +276,26 @@ export default function HomeScreen() {
         async (payload) => {
           const newSes = payload.new as any;
           const [optRes, profileRes] = await Promise.all([
-            supabase
-              .from("ses_options")
-              .select("id, text, order")
-              .eq("ses_id", newSes.id)
-              .order("order"),
-            supabase
-              .from("profiles")
-              .select("username, avatar_url")
-              .eq("id", newSes.created_by)
-              .single(),
+            supabase.from("ses_options").select("id, text, order").eq("ses_id", newSes.id).order("order"),
+            supabase.from("profiles").select("username, avatar_url").eq("id", newSes.created_by).single(),
           ]);
 
           const item = {
             id: newSes.id,
             question: newSes.question,
+            description: newSes.description ?? null,
             vote_type: newSes.vote_type,
             created_at: newSes.created_at,
             created_by: newSes.created_by,
+            end_date: newSes.end_date ?? null,
+            is_anonymous: newSes.is_anonymous ?? false,
             options: optRes.data ?? [],
             option_count: optRes.data?.length ?? 0,
             vote_count: 0,
             has_voted: false,
             selected_option_ids: [],
             author: profileRes.data ?? null,
+            topics: [],
           };
 
           if (newSes.created_by !== session?.user?.id) prependItem(item);
@@ -250,6 +314,11 @@ export default function HomeScreen() {
     load(true);
   };
 
+  const handleFilterChange = (f: "all" | "following" | "topics" | "trending") => {
+    setSelectedFilter(f);
+    setLoading(true);
+  };
+
   return (
     <ThemedView className="flex-1 items-center bg-neutral-50 dark:bg-neutral-950">
       <SafeAreaView
@@ -260,13 +329,70 @@ export default function HomeScreen() {
           <Text className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
             Feed
           </Text>
-          <TouchableOpacity className="p-1 active:opacity-70">
-            <Ionicons
-              name="notifications-outline"
-              size={22}
-              color={colors.text}
-            />
+          <TouchableOpacity
+            className="p-1 active:opacity-70 relative"
+            onPress={() => router.push("/notifications" as any)}
+          >
+            <Ionicons name="notifications-outline" size={22} color={colors.text} />
+            {unreadCount > 0 && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  right: 2,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: "#ef4444",
+                }}
+              />
+            )}
           </TouchableOpacity>
+        </View>
+
+        <View style={{ backgroundColor: isDark ? "#0a0a0a" : "#fff", borderBottomWidth: 1, borderBottomColor: isDark ? "#171717" : "#f3f4f6" }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+          >
+            {FILTERS.map((f) => {
+              const active = selectedFilter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => handleFilterChange(f.key)}
+                  activeOpacity={0.75}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 999,
+                    backgroundColor: active
+                      ? isDark ? "#fff" : "#111"
+                      : isDark ? "#171717" : "#f3f4f6",
+                  }}
+                >
+                  <Ionicons
+                    name={f.icon as any}
+                    size={13}
+                    color={active ? (isDark ? "#000" : "#fff") : isDark ? "#555" : "#9ca3af"}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      color: active ? (isDark ? "#000" : "#fff") : isDark ? "#555" : "#6b7280",
+                    }}
+                  >
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {loading ? (
@@ -299,4 +425,3 @@ export default function HomeScreen() {
     </ThemedView>
   );
 }
-

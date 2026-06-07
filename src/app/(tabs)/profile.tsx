@@ -1,4 +1,4 @@
-import GeoInfoCard, { type GeoState } from "@/components/cards/geo-card";
+import { SesCard } from "@/components/cards/ses-card";
 import DemographicsBanner, {
   OK_HIT_SLOP,
 } from "@/components/demographics-banner";
@@ -8,7 +8,6 @@ import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/useAuth";
 import { useFollow } from "@/hooks/useFollow";
 import { useProfileStore, useUserActivityStore } from "@/stores";
-import { fetchIpGeoData } from "@/utils/geo";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -17,6 +16,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -33,7 +33,7 @@ export default function Profile() {
   const router = useRouter();
   const { session } = useAuth();
   const { fetchLikes } = useProfileStore();
-  const { fetchBookmarkedSess } = useUserActivityStore();
+  const { fetchBookmarkedSess, bookmarkedSess } = useUserActivityStore();
 
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -42,6 +42,10 @@ export default function Profile() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showBirthGenderModal, setShowBirthGenderModal] = useState(false);
   const [hasDemographics, setHasDemographics] = useState(false);
+  const [streakCount, setStreakCount] = useState<number>(0);
+  const [activeSection, setActiveSection] = useState<"stats" | "bookmarks">(
+    "stats",
+  );
 
   const [stats, setStats] = useState({
     published: 0,
@@ -51,15 +55,6 @@ export default function Profile() {
   });
   const [loadingStats, setLoadingStats] = useState(true);
   const [, setFollowingUsers] = useState<any[]>([]);
-
-  const [geo, setGeo] = useState<GeoState>({
-    ipData: null,
-    deviceCity: null,
-    deviceCoords: null,
-    loadingIp: true,
-    loadingDevice: false,
-    devicePermission: Platform.OS === "web" ? "denied" : "unknown",
-  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(8)).current;
@@ -90,81 +85,17 @@ export default function Profile() {
         loadProfileAndStats();
         fetchLikes(session.user.id);
         fetchBookmarkedSess(session.user.id);
-        loadGeoData();
       }
     }, [session]),
   );
 
-  const loadGeoData = async () => {
-    setGeo((prev) => ({ ...prev, loadingIp: true }));
-    const ipData = await fetchIpGeoData();
-    setGeo((prev) => ({ ...prev, ipData, loadingIp: false }));
-
-    if (Platform.OS === "web") return;
-
-    const Location = await import("expo-location");
-    const { status } = await Location.getForegroundPermissionsAsync();
-    if (status === "granted") {
-      setGeo((prev) => ({ ...prev, devicePermission: "granted" }));
-      await fetchDeviceLocation();
-    } else if (status === "denied") {
-      setGeo((prev) => ({ ...prev, devicePermission: "denied" }));
-    }
-  };
-
-  const fetchDeviceLocation = async () => {
-    if (Platform.OS === "web") return;
-    setGeo((prev) => ({ ...prev, loadingDevice: true }));
-    try {
-      const Location = await import("expo-location");
-      const coords = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const [place] = await Location.reverseGeocodeAsync({
-        latitude: coords.coords.latitude,
-        longitude: coords.coords.longitude,
-      });
-      const city = place?.city || place?.subregion || place?.region || "Unknown";
-      setGeo((prev) => ({
-        ...prev,
-        deviceCity: city,
-        deviceCoords: {
-          lat: coords.coords.latitude,
-          lon: coords.coords.longitude,
-        },
-        devicePermission: "granted",
-        loadingDevice: false,
-      }));
-    } catch {
-      setGeo((prev) => ({ ...prev, loadingDevice: false }));
-    }
-  };
-
-  const handleRequestDeviceLocation = async () => {
-    if (Platform.OS === "web") return;
-    setGeo((prev) => ({ ...prev, loadingDevice: true }));
-    const Location = await import("expo-location");
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      setGeo((prev) => ({
-        ...prev,
-        devicePermission: "denied",
-        loadingDevice: false,
-      }));
-      return;
-    }
-    setGeo((prev) => ({ ...prev, devicePermission: "granted" }));
-    await fetchDeviceLocation();
-  };
-
   const loadProfileAndStats = async () => {
     if (!session?.user?.id) return;
     setLoadingStats(true);
-
     try {
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("username, avatar_url, birth_date, gender")
+        .select("username, avatar_url, birth_date, gender, streak_count")
         .eq("id", session.user.id)
         .single();
 
@@ -172,37 +103,29 @@ export default function Profile() {
         setUsername(profileData.username ?? "");
         setAvatarUrl(profileData.avatar_url ?? null);
         setHasDemographics(!!profileData.birth_date && !!profileData.gender);
+        setStreakCount(profileData.streak_count ?? 0);
       }
 
-      const [
-        publishedRes,
-        votedRes,
-        followersRes,
-        followingRes,
-        followingUsersRes,
-      ] = await Promise.all([
-        supabase
-          .from("ses")
-          .select("*", { count: "exact", head: true })
-          .eq("created_by", session.user.id),
-        supabase
-          .from("ses_votes")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", session.user.id),
-        supabase
-          .from("follows")
-          .select("*", { count: "exact", head: true })
-          .eq("following_id", session.user.id),
-        supabase
-          .from("follows")
-          .select("*", { count: "exact", head: true })
-          .eq("follower_id", session.user.id),
-        supabase
-          .from("follows")
-          .select("following_id")
-          .eq("follower_id", session.user.id)
-          .limit(20),
-      ]);
+      const [publishedRes, votedRes, followingRes, followingUsersRes] =
+        await Promise.all([
+          supabase
+            .from("ses")
+            .select("*", { count: "exact", head: true })
+            .eq("created_by", session.user.id),
+          supabase
+            .from("ses_votes")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", session.user.id),
+          supabase
+            .from("follows")
+            .select("*", { count: "exact", head: true })
+            .eq("follower_id", session.user.id),
+          supabase
+            .from("follows")
+            .select("following_id")
+            .eq("follower_id", session.user.id)
+            .limit(20),
+        ]);
 
       setStats({
         published: publishedRes.count ?? 0,
@@ -260,22 +183,6 @@ export default function Profile() {
     setShowBirthGenderModal(false);
   };
 
-  const uploadAvatarBlob = async (blob: Blob, mimeType: string) => {
-    const ext = mimeType.split("/")[1] || "jpg";
-    const fileName = `${session!.user.id}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(fileName, blob, { upsert: true, contentType: mimeType });
-    if (uploadError) throw uploadError;
-    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
-    await supabase.from("profiles").upsert({
-      id: session!.user.id,
-      avatar_url: data.publicUrl,
-      updated_at: new Date().toISOString(),
-    });
-    setAvatarUrl(data.publicUrl);
-  };
-
   const pickAvatarWeb = () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -285,7 +192,19 @@ export default function Profile() {
       if (!file) return;
       setAvatarUploading(true);
       try {
-        await uploadAvatarBlob(file, file.type);
+        const fileName = `${session!.user.id}.${file.type.split("/")[1] || "jpg"}`;
+        await supabase.storage
+          .from("avatars")
+          .upload(fileName, file, { upsert: true, contentType: file.type });
+        const { data } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(fileName);
+        await supabase.from("profiles").upsert({
+          id: session!.user.id,
+          avatar_url: data.publicUrl,
+          updated_at: new Date().toISOString(),
+        });
+        setAvatarUrl(data.publicUrl);
       } catch {
         Alert.alert("Error", "Could not upload avatar.");
       } finally {
@@ -300,29 +219,24 @@ export default function Profile() {
       pickAvatarWeb();
       return;
     }
-
     const ImagePicker = await import("expo-image-picker");
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permission needed", "Allow photo access to set an avatar.");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-
     if (result.canceled) return;
-
     setAvatarUploading(true);
     Animated.spring(avatarScale, {
       toValue: 0.96,
       useNativeDriver: true,
     }).start();
-
     try {
       const uri = result.assets[0].uri;
       const ext = uri.split(".").pop() || "jpg";
@@ -333,21 +247,15 @@ export default function Profile() {
         name: fileName,
         type: `image/${ext}`,
       } as any);
-
-      const { error: uploadError } = await supabase.storage
+      await supabase.storage
         .from("avatars")
         .upload(fileName, formData, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
       const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
-
       await supabase.from("profiles").upsert({
         id: session!.user.id,
         avatar_url: data.publicUrl,
         updated_at: new Date().toISOString(),
       });
-
       setAvatarUrl(data.publicUrl);
     } catch {
       Alert.alert("Error", "Could not upload avatar.");
@@ -379,20 +287,17 @@ export default function Profile() {
             <ThemedText className="text-base font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
               Profile
             </ThemedText>
-
-            <View className="flex-row items-center gap-4">
-              <Pressable
-                onPress={() => router.push("/settings" as any)}
-                hitSlop={OK_HIT_SLOP}
-                className="active:opacity-60"
-              >
-                <Ionicons
-                  name="settings-outline"
-                  size={20}
-                  className="text-neutral-400 dark:text-neutral-500"
-                />
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={() => router.push("/settings" as any)}
+              hitSlop={OK_HIT_SLOP}
+              className="active:opacity-60"
+            >
+              <Ionicons
+                name="settings-outline"
+                size={20}
+                className="text-neutral-400 dark:text-neutral-500"
+              />
+            </Pressable>
           </View>
 
           <ScrollView
@@ -439,6 +344,28 @@ export default function Profile() {
                     </View>
                   </Pressable>
                 </Animated.View>
+
+                {streakCount > 0 && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      marginTop: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>🔥</Text>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "700",
+                        color: "#f97316",
+                      }}
+                    >
+                      {streakCount} day streak
+                    </Text>
+                  </View>
+                )}
 
                 {editing ? (
                   <View className="w-full mt-4 gap-2">
@@ -513,9 +440,7 @@ export default function Profile() {
                     followers
                   </ThemedText>
                 </Pressable>
-
                 <View className="w-[1px] h-6 bg-neutral-100 dark:bg-zinc-800 self-center" />
-
                 <Pressable
                   onPress={() =>
                     router.push(`/${userSegment}/following` as any)
@@ -541,54 +466,117 @@ export default function Profile() {
                 />
               )}
 
-              <GeoInfoCard
-                geo={geo}
-                onRequestDevice={handleRequestDeviceLocation}
-              />
-
-              <View className="bg-white dark:bg-zinc-900 rounded-2xl border border-neutral-100 dark:border-zinc-800/60 overflow-hidden shadow-sm shadow-black/[0.02]">
-                <Pressable
-                  onPress={() => router.push(`/${userSegment}/sess` as any)}
-                  className="flex-row items-center justify-between p-4 border-b border-neutral-50 dark:border-zinc-800/40 active:bg-neutral-50 dark:active:bg-zinc-800/30"
-                >
-                  <View className="flex-row items-center gap-3">
-                    <Ionicons
-                      name="grid-outline"
-                      size={16}
-                      className="text-neutral-400 dark:text-neutral-500"
-                    />
-                    <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                      My Sess
-                    </ThemedText>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    className="text-neutral-300 dark:text-zinc-600"
-                  />
-                </Pressable>
-
-                <Pressable
-                  onPress={() => router.push(`/${userSegment}/votes` as any)}
-                  className="flex-row items-center justify-between p-4 active:bg-neutral-50 dark:active:bg-zinc-800/30"
-                >
-                  <View className="flex-row items-center gap-3">
-                    <Ionicons
-                      name="bar-chart-outline"
-                      size={16}
-                      className="text-neutral-400 dark:text-neutral-500"
-                    />
-                    <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                      My Votes
-                    </ThemedText>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    className="text-neutral-300 dark:text-zinc-600"
-                  />
-                </Pressable>
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 0,
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  backgroundColor: "#f3f4f6",
+                }}
+              >
+                {(["stats", "bookmarks"] as const).map((tab) => (
+                  <TouchableOpacity
+                    key={tab}
+                    onPress={() => setActiveSection(tab)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 9,
+                      alignItems: "center",
+                      backgroundColor:
+                        activeSection === tab ? "#111" : "transparent",
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "700",
+                        color: activeSection === tab ? "#fff" : "#6b7280",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {tab}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
+
+              {activeSection === "stats" && (
+                <View className="bg-white dark:bg-zinc-900 rounded-2xl border border-neutral-100 dark:border-zinc-800/60 overflow-hidden shadow-sm shadow-black/[0.02]">
+                  <Pressable
+                    onPress={() => router.push(`/${userSegment}/sess` as any)}
+                    className="flex-row items-center justify-between p-4 border-b border-neutral-50 dark:border-zinc-800/40 active:bg-neutral-50 dark:active:bg-zinc-800/30"
+                  >
+                    <View className="flex-row items-center gap-3">
+                      <Ionicons
+                        name="grid-outline"
+                        size={16}
+                        className="text-neutral-400 dark:text-neutral-500"
+                      />
+                      <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        My Sess
+                      </ThemedText>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      className="text-neutral-300 dark:text-zinc-600"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push(`/${userSegment}/votes` as any)}
+                    className="flex-row items-center justify-between p-4 active:bg-neutral-50 dark:active:bg-zinc-800/30"
+                  >
+                    <View className="flex-row items-center gap-3">
+                      <Ionicons
+                        name="bar-chart-outline"
+                        size={16}
+                        className="text-neutral-400 dark:text-neutral-500"
+                      />
+                      <ThemedText className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        My Votes
+                      </ThemedText>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      className="text-neutral-300 dark:text-zinc-600"
+                    />
+                  </Pressable>
+                </View>
+              )}
+
+              {activeSection === "bookmarks" && (
+                <View>
+                  {bookmarkedSess.length === 0 ? (
+                    <View
+                      style={{
+                        alignItems: "center",
+                        paddingVertical: 32,
+                        gap: 8,
+                      }}
+                    >
+                      <Ionicons
+                        name="bookmark-outline"
+                        size={28}
+                        color="#9ca3af"
+                      />
+                      <Text style={{ color: "#9ca3af", fontSize: 13 }}>
+                        No bookmarks yet
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={bookmarkedSess}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => <SesCard item={item} />}
+                      scrollEnabled={false}
+                      contentContainerStyle={{ gap: 12 }}
+                    />
+                  )}
+                </View>
+              )}
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>

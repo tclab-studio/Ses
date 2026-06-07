@@ -1,8 +1,17 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const OK_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -10,77 +19,54 @@ const OK_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 const appVersion =
   Constants.expoConfig?.version ?? Constants.manifest?.version ?? "1.0.0";
 
-type RowProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  iconBg: string;
-  iconColor: string;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  last?: boolean;
-  destructive?: boolean;
-};
-
-function SettingsRow({
-  icon,
-  iconBg,
-  iconColor,
-  label,
-  value,
-  onPress,
-  last,
-  destructive,
-}: RowProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={OK_HIT_SLOP}
-      className={`flex-row items-center justify-between px-4 py-3.5 active:bg-neutral-50 dark:active:bg-zinc-800/40 ${
-        !last ? "border-b border-neutral-100 dark:border-zinc-800/60" : ""
-      }`}
-    >
-      <View className="flex-row items-center gap-3.5">
-        <View
-          className="w-8 h-8 rounded-xl items-center justify-center"
-          style={{ backgroundColor: iconBg }}
-        >
-          <Ionicons name={icon} size={15} color={iconColor} />
-        </View>
-        <Text
-          className={`text-sm font-semibold ${
-            destructive
-              ? "text-red-500"
-              : "text-neutral-800 dark:text-neutral-200"
-          }`}
-        >
-          {label}
-        </Text>
-      </View>
-      <View className="flex-row items-center gap-2">
-        {value ? (
-          <Text className="text-xs text-neutral-400 dark:text-zinc-500 font-medium">
-            {value}
-          </Text>
-        ) : null}
-        {onPress && !destructive && (
-          <Ionicons name="chevron-forward" size={14} color="#a3a3a3" />
-        )}
-      </View>
-    </Pressable>
-  );
-}
-
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <Text className="text-[10px] font-bold text-neutral-400 dark:text-zinc-500 uppercase tracking-widest px-1 mb-2 mt-6">
-      {label}
-    </Text>
-  );
-}
-
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
+
+  const [ipCity, setIpCity] = useState<string | null>(null);
+  const [deviceCity, setDeviceCity] = useState<string | null>(null);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
+
+  const locationDisplay = deviceCity || ipCity;
+
+  useEffect(() => {
+    loadLocation();
+  }, []);
+
+  const getFlagEmoji = (countryCode: string | null) => {
+    if (!countryCode) return "🌍";
+    return countryCode
+      .toUpperCase()
+      .split("")
+      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
+      .join("");
+  };
+  const flag = getFlagEmoji(countryCode);
+
+  const loadLocation = async () => {
+    const ipData = await (await import("@/utils/geo")).fetchIpGeoData();
+    if (ipData?.city) {
+      setIpCity(ipData.city);
+      setCountryCode(ipData.country_code || null);
+    }
+
+    if (Platform.OS === "web") return;
+
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status === "granted") {
+        const coords = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const [place] = await Location.reverseGeocodeAsync({
+          latitude: coords.coords.latitude,
+          longitude: coords.coords.longitude,
+        });
+        const city = place?.city || place?.subregion || place?.region || null;
+        if (city) setDeviceCity(city);
+      }
+    } catch {}
+  };
 
   const handleSignOut = () => {
     Alert.alert("Sign out", "You sure you wanna dip?", [
@@ -170,6 +156,15 @@ export default function SettingsScreen() {
             />
           </View>
 
+          {locationDisplay && (
+            <View className="flex-row mt-4 items-center gap-2 self-center">
+              <Text className="text-sm font-bold text-neutral-900 dark:text-neutral-50">
+                Connected from {locationDisplay}
+              </Text>
+              <Text style={{ fontSize: 22 }}>{flag}</Text>
+            </View>
+          )}
+
           <SectionLabel label="Danger Zone" />
           <View className="bg-white dark:bg-zinc-900 rounded-2xl border border-neutral-200/60 dark:border-zinc-800 overflow-hidden">
             <SettingsRow
@@ -185,5 +180,71 @@ export default function SettingsScreen() {
         </ScrollView>
       </SafeAreaView>
     </View>
+  );
+}
+
+function SettingsRow({
+  icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  onPress,
+  last,
+  destructive,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  last?: boolean;
+  destructive?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={OK_HIT_SLOP}
+      className={`flex-row items-center justify-between px-4 py-3.5 active:bg-neutral-50 dark:active:bg-zinc-800/40 ${
+        !last ? "border-b border-neutral-100 dark:border-zinc-800/60" : ""
+      }`}
+    >
+      <View className="flex-row items-center gap-3.5">
+        <View
+          className="w-8 h-8 rounded-xl items-center justify-center"
+          style={{ backgroundColor: iconBg }}
+        >
+          <Ionicons name={icon} size={15} color={iconColor} />
+        </View>
+        <Text
+          className={`text-sm font-semibold ${
+            destructive
+              ? "text-red-500"
+              : "text-neutral-800 dark:text-neutral-200"
+          }`}
+        >
+          {label}
+        </Text>
+      </View>
+      <View className="flex-row items-center gap-2">
+        {value ? (
+          <Text className="text-xs text-neutral-400 dark:text-zinc-500 font-medium">
+            {value}
+          </Text>
+        ) : null}
+        {onPress && !destructive && (
+          <Ionicons name="chevron-forward" size={14} color="#a3a3a3" />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <Text className="text-[10px] font-bold text-neutral-400 dark:text-zinc-500 uppercase tracking-widest px-1 mb-2 mt-6">
+      {label}
+    </Text>
   );
 }

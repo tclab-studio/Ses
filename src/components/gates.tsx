@@ -21,17 +21,6 @@ async function getStorageItem(key: string): Promise<string | null> {
   return AsyncStorage.getItem(key);
 }
 
-async function setStorageItem(key: string, value: string): Promise<void> {
-  if (Platform.OS === "web") {
-    try {
-      localStorage.setItem(key, value);
-    } catch {}
-    return;
-  }
-  const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
-  await AsyncStorage.setItem(key, value);
-}
-
 export function AuthAndGeoGate() {
   const { session, initializing, init } = useAuthStore();
   const { isTelegram } = useEnvironment();
@@ -42,6 +31,8 @@ export function AuthAndGeoGate() {
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
+  const [hasTopics, setHasTopics] = useState<boolean | null>(null);
+  const [checkingTopics, setCheckingTopics] = useState(false);
 
   const userId = session?.user?.id;
   const { showLocationPrompt, dismiss } = useGeoPrompt(userId, hasUsername);
@@ -103,18 +94,21 @@ export function AuthAndGeoGate() {
   useEffect(() => {
     if (!session?.user) {
       setHasUsername(null);
+      setHasTopics(null);
       return;
     }
     setCheckingUsername(true);
-    supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        setHasUsername(!!data?.username);
-        setCheckingUsername(false);
-      });
+    setCheckingTopics(true);
+
+    Promise.all([
+      supabase.from("profiles").select("username").eq("id", session.user.id).maybeSingle(),
+      supabase.from("user_topics").select("topic_id").eq("user_id", session.user.id).limit(1)
+    ]).then(([{ data: profileData }, { data: topicsData }]) => {
+      setHasUsername(!!profileData?.username);
+      setCheckingUsername(false);
+      setHasTopics(!!topicsData && topicsData.length > 0);
+      setCheckingTopics(false);
+    });
   }, [session?.user?.id]);
 
   const fetchLikes = useProfileStore((s) => s.fetchLikes);
@@ -123,11 +117,12 @@ export function AuthAndGeoGate() {
   }, [userId]);
 
   useEffect(() => {
-    if (initializing || checkingUsername || checkingOnboarding) return;
+    if (initializing || checkingUsername || checkingOnboarding || checkingTopics) return;
 
     const inOnboarding = segments[0] === "onboard";
     const inAuthGroup = segments[0] === "auth";
     const inUsernameSetup = segments[0] === "username-setup";
+    const inTopics = segments[0] === "topics";
     const isTargetingLegal = segments.join("/") === "settings/legal";
 
     if (isFirstLaunch && !isTelegram) {
@@ -151,7 +146,14 @@ export function AuthAndGeoGate() {
       return;
     }
 
-    if (hasUsername === true && (inAuthGroup || inUsernameSetup || inOnboarding)) {
+    if (hasUsername === true && hasTopics === false && !inTopics) {
+      if (!isTargetingLegal) {
+        router.replace("/topics");
+      }
+      return;
+    }
+
+    if (hasUsername === true && hasTopics === true && (inAuthGroup || inUsernameSetup || inOnboarding || inTopics)) {
       router.replace("/");
     }
   }, [
@@ -160,25 +162,12 @@ export function AuthAndGeoGate() {
     segments,
     hasUsername,
     checkingUsername,
+    hasTopics,
+    checkingTopics,
     checkingOnboarding,
     isFirstLaunch,
     isTelegram,
   ]);
-
-  useEffect(() => {
-    if (!checkingOnboarding && isFirstLaunch && !isTelegram) {
-      const interval = setInterval(async () => {
-        try {
-          const hasLaunched = await getStorageItem(HAS_LAUNCHED_KEY);
-          if (hasLaunched === "true") {
-            setIsFirstLaunch(false);
-            clearInterval(interval);
-          }
-        } catch {}
-      }, 300);
-      return () => clearInterval(interval);
-    }
-  }, [checkingOnboarding, isFirstLaunch, isTelegram]);
 
   useEffect(() => {
     if (!session?.user?.id || hasUsername !== false) return;
@@ -205,7 +194,7 @@ export function AuthAndGeoGate() {
     }
   }, [showLocationPrompt, userId]);
 
-  if (initializing || checkingOnboarding || (session && checkingUsername)) {
+  if (initializing || checkingOnboarding || (session && (checkingUsername || checkingTopics))) {
     return (
       <View className="flex-1 bg-white dark:bg-zinc-950 items-center justify-center">
         <ActivityIndicator

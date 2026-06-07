@@ -1,4 +1,4 @@
-import { AuthAndGeoGate } from "@/components/auth-geo-gate";
+import { AuthAndGeoGate } from "@/components/gates";
 import { useTerminalTelemetry } from "@/hooks/useTerminalTelemetry";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

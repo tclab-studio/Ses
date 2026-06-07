@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ses",
     "slug": "Ses",
-    "version": "1.0.0",
+    "version": "1.0.9",
     "orientation": "portrait",
     "scheme": "ses",
     "userInterfaceStyle": "automatic",

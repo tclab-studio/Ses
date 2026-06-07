@@ -27,6 +27,34 @@ const GEO_REMIND_KEY = "@geo_remind_later_ts";
 const REMIND_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
 const OK_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
+const INTERESTS = [
+  { id: "tech", label: "Tech", emoji: "💻" },
+  { id: "science", label: "Science", emoji: "🔬" },
+  { id: "sports", label: "Sports", emoji: "⚽" },
+  { id: "gaming", label: "Gaming", emoji: "🎮" },
+  { id: "music", label: "Music", emoji: "🎵" },
+  { id: "finance", label: "Finance", emoji: "📈" },
+  { id: "politics", label: "Politics", emoji: "🗳️" },
+  { id: "food", label: "Food", emoji: "🍕" },
+  { id: "travel", label: "Travel", emoji: "✈️" },
+  { id: "health", label: "Health", emoji: "💪" },
+  { id: "crypto", label: "Crypto", emoji: "₿" },
+  { id: "art", label: "Art", emoji: "🎨" },
+];
+
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "de", label: "Deutsch" },
+  { code: "tr", label: "Türkçe" },
+  { code: "es", label: "Español" },
+  { code: "fr", label: "Français" },
+  { code: "ru", label: "Русский" },
+  { code: "ar", label: "العربية" },
+  { code: "zh", label: "中文" },
+  { code: "pt", label: "Português" },
+  { code: "ja", label: "日本語" },
+];
+
 type LocationStatus = "unknown" | "granted" | "denied" | "remind_later";
 
 function FieldLabel({ label }: { label: string }) {
@@ -183,6 +211,12 @@ export default function UserSettings() {
   const [showBirthGenderModal, setShowBirthGenderModal] = useState(false);
   const [birthDate, setBirthDate] = useState<string | null>(null);
 
+  const [interests, setInterests] = useState<string[]>([]);
+  const [savingInterests, setSavingInterests] = useState(false);
+  const [newInterest, setNewInterest] = useState("");
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [savingLanguages, setSavingLanguages] = useState(false);
+
   const [locationStatus, setLocationStatus] =
     useState<LocationStatus>("unknown");
   const [cityName, setCityName] = useState<string | null>(null);
@@ -211,7 +245,9 @@ export default function UserSettings() {
     try {
       const { data } = await supabase
         .from("profiles")
-        .select("username, avatar_url, full_name, birth_date, gender, city")
+        .select(
+          "username, avatar_url, full_name, birth_date, gender, city, interests, languages",
+        )
         .eq("id", session.user.id)
         .single();
 
@@ -221,6 +257,8 @@ export default function UserSettings() {
         setAvatarUrl(data.avatar_url ?? null);
         setGender(data.gender ?? "Male");
         setBirthDate(data.birth_date ?? null);
+        setInterests(data.interests ?? []);
+        setLanguages(data.languages ?? []);
         if (data.city) {
           setCityName(data.city);
           setLocationStatus("granted");
@@ -233,8 +271,14 @@ export default function UserSettings() {
 
   const checkLocationStatus = async () => {
     const { status } = await Location.getForegroundPermissionsAsync();
-    if (status === "granted") { setLocationStatus("granted"); return; }
-    if (status === "denied") { setLocationStatus("denied"); return; }
+    if (status === "granted") {
+      setLocationStatus("granted");
+      return;
+    }
+    if (status === "denied") {
+      setLocationStatus("denied");
+      return;
+    }
     try {
       const remindTs = await AsyncStorage.getItem(GEO_REMIND_KEY);
       if (remindTs && Date.now() - parseInt(remindTs, 10) < REMIND_DELAY_MS) {
@@ -249,14 +293,20 @@ export default function UserSettings() {
     setLocationLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") { setLocationStatus("denied"); return; }
+      if (status !== "granted") {
+        setLocationStatus("denied");
+        return;
+      }
 
-      const coords = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+      const coords = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Low,
+      });
       const [place] = await Location.reverseGeocodeAsync({
         latitude: coords.coords.latitude,
         longitude: coords.coords.longitude,
       });
-      const city = place?.city || place?.subregion || place?.region || "Unknown City";
+      const city =
+        place?.city || place?.subregion || place?.region || "Unknown City";
 
       setCityName(city);
       setLocationStatus("granted");
@@ -276,8 +326,59 @@ export default function UserSettings() {
   };
 
   const handleRemindLater = async () => {
-    try { await AsyncStorage.setItem(GEO_REMIND_KEY, String(Date.now())); } catch {}
+    try {
+      await AsyncStorage.setItem(GEO_REMIND_KEY, String(Date.now()));
+    } catch {}
     setLocationStatus("remind_later");
+  };
+
+  const toggleInterest = async (id: string) => {
+    if (!session?.user?.id) return;
+    const next = interests.includes(id)
+      ? interests.filter((i) => i !== id)
+      : interests.length < 6
+        ? [...interests, id]
+        : interests;
+    setInterests(next);
+    setSavingInterests(true);
+    await supabase.from("profiles").upsert({
+      id: session.user.id,
+      interests: next,
+      updated_at: new Date().toISOString(),
+    });
+    setSavingInterests(false);
+  };
+
+  const addCustomInterest = async () => {
+    if (!newInterest.trim() || !session?.user?.id) return;
+    const trimmed = newInterest.trim().toLowerCase();
+    if (interests.includes(trimmed) || interests.length >= 6) return;
+
+    const next = [...interests, trimmed];
+    setInterests(next);
+    setNewInterest("");
+    setSavingInterests(true);
+    await supabase.from("profiles").upsert({
+      id: session.user.id,
+      interests: next,
+      updated_at: new Date().toISOString(),
+    });
+    setSavingInterests(false);
+  };
+
+  const toggleLanguage = async (code: string) => {
+    if (!session?.user?.id) return;
+    const next = languages.includes(code)
+      ? languages.filter((l) => l !== code)
+      : [...languages, code];
+    setLanguages(next);
+    setSavingLanguages(true);
+    await supabase.from("profiles").upsert({
+      id: session.user.id,
+      languages: next,
+      updated_at: new Date().toISOString(),
+    });
+    setSavingLanguages(false);
   };
 
   const handleSave = async () => {
@@ -313,14 +414,21 @@ export default function UserSettings() {
     if (result.canceled) return;
 
     setAvatarUploading(true);
-    Animated.spring(avatarScale, { toValue: 0.94, useNativeDriver: true }).start();
+    Animated.spring(avatarScale, {
+      toValue: 0.94,
+      useNativeDriver: true,
+    }).start();
 
     try {
       const uri = result.assets[0].uri;
       const ext = uri.split(".").pop();
       const fileName = `${session!.user.id}.${ext}`;
       const formData = new FormData();
-      formData.append("file", { uri, name: fileName, type: `image/${ext}` } as any);
+      formData.append("file", {
+        uri,
+        name: fileName,
+        type: `image/${ext}`,
+      } as any);
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
@@ -338,7 +446,10 @@ export default function UserSettings() {
       Alert.alert("Error", "Avatar upload flopped.");
     } finally {
       setAvatarUploading(false);
-      Animated.spring(avatarScale, { toValue: 1, useNativeDriver: true }).start();
+      Animated.spring(avatarScale, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
     }
   };
 
@@ -394,12 +505,12 @@ export default function UserSettings() {
               onPress={handleSave}
               activeOpacity={0.8}
               disabled={saving}
-              className="h-9 px-4 rounded-xl bg-neutral-900 dark:bg-white items-center justify-center"
+              className="h-9 px-4 rounded-xl bg-[#27a3f1] items-center justify-center"
             >
               {saving ? (
                 <ActivityIndicator size={12} color="#fff" />
               ) : (
-                <Text className="text-xs font-bold text-white dark:text-zinc-950">
+                <Text className="text-xs font-bold text-white dark:text-neutral-100">
                   Save
                 </Text>
               )}
@@ -414,7 +525,10 @@ export default function UserSettings() {
             <Animated.View style={{ opacity: fadeAnim, gap: 24 }}>
               <View className="items-center gap-3">
                 <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
-                  <Pressable onPress={pickAvatar} className="relative active:opacity-90">
+                  <Pressable
+                    onPress={pickAvatar}
+                    className="relative active:opacity-90"
+                  >
                     {displayAvatar ? (
                       <Image
                         source={{ uri: displayAvatar }}
@@ -431,7 +545,11 @@ export default function UserSettings() {
                       {avatarUploading ? (
                         <ActivityIndicator size={12} color="#fff" />
                       ) : (
-                        <Ionicons name="camera" size={14} color={Platform.OS === "ios" ? "white" : "black"} />
+                        <Ionicons
+                          name="camera"
+                          size={14}
+                          color={Platform.OS === "ios" ? "white" : "black"}
+                        />
                       )}
                     </View>
                   </Pressable>
@@ -511,7 +629,11 @@ export default function UserSettings() {
                 >
                   <View className="flex-row items-center gap-3">
                     <View className="w-8 h-8 rounded-xl bg-purple-500/10 items-center justify-center">
-                      <Ionicons name="calendar-outline" size={15} color="#a855f7" />
+                      <Ionicons
+                        name="calendar-outline"
+                        size={15}
+                        color="#a855f7"
+                      />
                     </View>
                     <View>
                       <Text className="text-xs text-neutral-400 dark:text-zinc-500 font-medium">
@@ -524,6 +646,143 @@ export default function UserSettings() {
                   </View>
                   <Ionicons name="chevron-forward" size={14} color="#a3a3a3" />
                 </Pressable>
+              </View>
+
+              <View className="gap-2">
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                  }}
+                >
+                  <SectionLabel label="Interests" />
+                  <Text style={{ fontSize: 11, color: "#9ca3af" }}>
+                    {interests.length}/6
+                  </Text>
+                </View>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
+                  {INTERESTS.map((item) => {
+                    const active = interests.includes(item.id);
+                    const maxed = !active && interests.length >= 6;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => toggleInterest(item.id)}
+                        disabled={maxed || savingInterests}
+                        activeOpacity={0.7}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 5,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: active ? "#111" : "#f3f4f6",
+                          opacity: maxed ? 0.4 : 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13 }}>{item.emoji}</Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: active ? "#fff" : "#374151",
+                          }}
+                        >
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View className="flex-row gap-2 mt-3">
+                  <TextInput
+                    value={newInterest}
+                    onChangeText={setNewInterest}
+                    placeholder="add custom vibe..."
+                    placeholderTextColor="#a3a3a3"
+                    className="flex-1 bg-white dark:bg-zinc-900 rounded-xl px-4 py-3 text-sm border border-neutral-200 dark:border-zinc-800"
+                    onSubmitEditing={addCustomInterest}
+                  />
+                  <TouchableOpacity
+                    onPress={addCustomInterest}
+                    disabled={!newInterest.trim() || savingInterests}
+                    className="h-12 px-6 bg-neutral-900 dark:bg-white rounded-xl items-center justify-center"
+                  >
+                    <Text className="text-xs font-bold text-white dark:text-zinc-950">
+                      Add
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {interests.length > 0 && (
+                  <View className="flex-row flex-wrap gap-2 mt-2">
+                    {interests.map((int, idx) => (
+                      <View
+                        key={idx}
+                        className="bg-neutral-100 dark:bg-zinc-800 px-3 py-1 rounded-full flex-row items-center gap-1"
+                      >
+                        <Text className="text-xs text-neutral-700 dark:text-neutral-300">
+                          #{int}
+                        </Text>
+                        <TouchableOpacity onPress={() => toggleInterest(int)}>
+                          <Ionicons name="close" size={12} color="#9ca3af" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              <View className="gap-2">
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                  }}
+                >
+                  <SectionLabel label="Languages" />
+                  {savingLanguages && (
+                    <ActivityIndicator size={12} color="#9ca3af" />
+                  )}
+                </View>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
+                  {LANGUAGES.map((lang) => {
+                    const active = languages.includes(lang.code);
+                    return (
+                      <TouchableOpacity
+                        key={lang.code}
+                        onPress={() => toggleLanguage(lang.code)}
+                        disabled={savingLanguages}
+                        activeOpacity={0.7}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: active ? "#111" : "#f3f4f6",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: active ? "#fff" : "#374151",
+                          }}
+                        >
+                          {lang.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               <View className="gap-2">
