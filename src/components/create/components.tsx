@@ -92,6 +92,131 @@ export function TopicChip({
   );
 }
 
+const END_PRESETS: { label: string; value: number | null }[] = [
+  { label: "No expiry", value: null },
+  { label: "3d", value: 3 },
+  { label: "7d", value: 7 },
+  { label: "14d", value: 14 },
+  { label: "30d", value: 30 },
+];
+
+export function EndDatePresets({
+  selectedDays,
+  onSelect,
+}: {
+  selectedDays: number | null;
+  onSelect: (days: number | null) => void;
+}) {
+  const closeDate =
+    selectedDays !== null
+      ? new Date(Date.now() + selectedDays * 86400000).toLocaleDateString(
+          "en-US",
+          { month: "short", day: "numeric" },
+        )
+      : null;
+
+  return (
+    <View style={{ gap: 10 }}>
+      <View className="flex-row flex-wrap gap-2">
+        {END_PRESETS.map((p) => (
+          <Pressable
+            key={String(p.value)}
+            onPress={() => onSelect(p.value)}
+            style={({ pressed }) => [
+              { transform: [{ scale: pressed ? 0.95 : 1 }] },
+            ]}
+            className={`px-4 py-2.5 rounded-full border ${
+              selectedDays === p.value
+                ? "bg-black border-black"
+                : "bg-white border-neutral-200"
+            }`}
+          >
+            <Text
+              className={`text-xs font-black ${
+                selectedDays === p.value ? "text-white" : "text-neutral-500"
+              }`}
+            >
+              {p.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {closeDate && (
+        <Text className="text-xs font-semibold text-sky-500 px-0.5">
+          Closes on {closeDate}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function getQualityHints(
+  question: string,
+  description: string,
+): { msg: string; color: string; icon: string }[] {
+  const len = question.trim().length;
+  const hasQ = question.trim().endsWith("?");
+  const hints: { msg: string; color: string; icon: string }[] = [];
+
+  if (len === 0) return hints;
+
+  if (len < 10) {
+    hints.push({
+      msg: "Question too short",
+      color: "#ef4444",
+      icon: "warning-outline",
+    });
+  } else if (len < 20) {
+    hints.push({
+      msg: "Getting there...",
+      color: "#f59e0b",
+      icon: "ellipsis-horizontal-circle-outline",
+    });
+  }
+
+  if (len >= 10 && !hasQ) {
+    hints.push({
+      msg: "Try ending with a ?",
+      color: "#a3a3a3",
+      icon: "help-circle-outline",
+    });
+  }
+
+  if (len >= 20 && !description.trim()) {
+    hints.push({
+      msg: "Add context for better votes",
+      color: "#a3a3a3",
+      icon: "information-circle-outline",
+    });
+  }
+
+  return hints;
+}
+
+export function QualityHints({
+  question,
+  description,
+}: {
+  question: string;
+  description: string;
+}) {
+  const hints = getQualityHints(question, description);
+  if (hints.length === 0) return null;
+
+  return (
+    <View className="gap-1.5 px-0.5 mt-1">
+      {hints.map((h, i) => (
+        <View key={i} className="flex-row items-center gap-2">
+          <Ionicons name={h.icon as any} size={12} color={h.color} />
+          <Text style={{ color: h.color }} className="text-xs font-semibold">
+            {h.msg}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const CONFIDENCE_LABELS = [
   "",
   "Not sure at all",

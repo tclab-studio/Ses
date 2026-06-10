@@ -3,9 +3,23 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEnvironment } from "@/hooks/useEnvironment";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
-import { Animated, Platform, Pressable, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-function TelegramButton({ onPress, loading }: { onPress: () => void; loading: boolean }) {
+function TelegramButton({
+  onPress,
+  loading,
+}: {
+  onPress: () => void;
+  loading: boolean;
+}) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -60,8 +74,17 @@ export default function AuthScreen() {
 
   if (isTelegram) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#17212b", alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: "#fff", fontSize: 16 }}>Signing in with Telegram…</Text>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#fff",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ color: "#000000", fontSize: 16 }}>
+          Signing in with Telegram…
+        </Text>
       </View>
     );
   }
@@ -123,3 +146,4 @@ export default function AuthScreen() {
     </View>
   );
 }
+

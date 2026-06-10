@@ -60,6 +60,8 @@ function restoreConsole() {
 
 export function useTerminalTelemetry() {
   useEffect(() => {
+    if (!__DEV__) return;
+
     patchFetch();
     patchConsole();
     originalConsoleLog("[SYSTEM] Telemetry active. Intercepting core loops...");

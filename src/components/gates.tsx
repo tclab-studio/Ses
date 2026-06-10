@@ -206,7 +206,7 @@ export function AuthAndGeoGate() {
         setHasUsername(true);
         clearInterval(interval);
       }
-    }, 400);
+    }, 1000);
     return () => clearInterval(interval);
   }, [session?.user?.id, hasUsername]);
 
@@ -222,7 +222,7 @@ export function AuthAndGeoGate() {
         setHasTopics(true);
         clearInterval(interval);
       }
-    }, 400);
+    }, 1000);
     return () => clearInterval(interval);
   }, [session?.user?.id, hasTopics]);
 

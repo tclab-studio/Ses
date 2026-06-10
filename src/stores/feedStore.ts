@@ -3,7 +3,7 @@ import { zustandAsyncStorage } from "@/utils/storage";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const CACHE_TTL = 60_000;
+const CACHE_TTL = 3 * 60_000;
 
 export type FeedFilter = "all" | "following" | "topics" | "trending";
 

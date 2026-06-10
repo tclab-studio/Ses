@@ -1,17 +1,8 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
-import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import {
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const OK_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -22,51 +13,6 @@ const appVersion =
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
-
-  const [ipCity, setIpCity] = useState<string | null>(null);
-  const [deviceCity, setDeviceCity] = useState<string | null>(null);
-  const [countryCode, setCountryCode] = useState<string | null>(null);
-
-  const locationDisplay = deviceCity || ipCity;
-
-  useEffect(() => {
-    loadLocation();
-  }, []);
-
-  const getFlagEmoji = (countryCode: string | null) => {
-    if (!countryCode) return "🌍";
-    return countryCode
-      .toUpperCase()
-      .split("")
-      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
-      .join("");
-  };
-  const flag = getFlagEmoji(countryCode);
-
-  const loadLocation = async () => {
-    const ipData = await (await import("@/utils/geo")).fetchIpGeoData();
-    if (ipData?.city) {
-      setIpCity(ipData.city);
-      setCountryCode(ipData.country_code || null);
-    }
-
-    if (Platform.OS === "web") return;
-
-    try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status === "granted") {
-        const coords = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const [place] = await Location.reverseGeocodeAsync({
-          latitude: coords.coords.latitude,
-          longitude: coords.coords.longitude,
-        });
-        const city = place?.city || place?.subregion || place?.region || null;
-        if (city) setDeviceCity(city);
-      }
-    } catch {}
-  };
 
   const handleSignOut = () => {
     Alert.alert("Sign out", "You sure you wanna dip?", [
@@ -155,15 +101,6 @@ export default function SettingsScreen() {
               last
             />
           </View>
-
-          {locationDisplay && (
-            <View className="flex-row mt-4 items-center gap-2 self-center">
-              <Text className="text-sm font-bold text-neutral-900 dark:text-neutral-50">
-                Connected from {locationDisplay}
-              </Text>
-              <Text style={{ fontSize: 22 }}>{flag}</Text>
-            </View>
-          )}
 
           <SectionLabel label="Danger Zone" />
           <View className="bg-white dark:bg-zinc-900 rounded-2xl border border-neutral-200/60 dark:border-zinc-800 overflow-hidden">

@@ -213,6 +213,7 @@ function Slide({
 export default function OnboardingScreen() {
   const router = useRouter();
   const isMounted = useRef(false);
+  const isNavigating = useRef(false);
   const currentIndexRef = useRef(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -322,13 +323,16 @@ export default function OnboardingScreen() {
   }).current;
 
   const finishOnboarding = useCallback(async () => {
+    if (isNavigating.current) return;
+    isNavigating.current = true;
     try {
       await AsyncStorage.setItem(HAS_LAUNCHED_KEY, "true");
     } catch {}
+    await new Promise((r) => setTimeout(r, 80));
     if (isMounted.current) {
       router.replace("/auth");
     }
-  }, []);
+  }, [router]);
 
   const handleNext = async () => {
     const idx = currentIndexRef.current;

@@ -74,7 +74,7 @@ const LargeSecureStoreAdapter = {
 
       await SecureStore.setItemAsync(`${key}__chunks`, String(chunks.length));
     } catch (err) {
-      console.error("[SecureStore] setItem failed:", err);
+      if (__DEV__) console.error("[SecureStore] setItem failed:", err);
     }
   },
 
@@ -115,6 +115,14 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: Platform.OS === "web",
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+  global: {
+    fetch: fetch.bind(globalThis),
   },
 });
 

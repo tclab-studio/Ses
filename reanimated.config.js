@@ -1,3 +1,3 @@
 module.exports = {
-  strict: false,
+  strict: true,
 };

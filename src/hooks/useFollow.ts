@@ -47,6 +47,12 @@ export function useFollow(targetUserId: string, currentUserId: string | null) {
         await supabase
           .from("follows")
           .insert({ follower_id: currentUserId, following_id: targetUserId });
+
+        supabase.functions
+          .invoke("notify-follow", {
+            body: { follower_id: currentUserId, following_id: targetUserId },
+          })
+          .catch(() => {});
       }
     },
     onMutate: async (currentlyFollowing) => {
@@ -68,7 +74,7 @@ export function useFollow(targetUserId: string, currentUserId: string | null) {
 
       return { previousState };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previousState) {
         queryClient.setQueryData(queryKey, context.previousState);
       }

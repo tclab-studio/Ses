@@ -1,5 +1,7 @@
 import {
+  EndDatePresets,
   PostVoteSheet,
+  QualityHints,
   SectionLabel,
   Topic,
   TopicChip,
@@ -29,7 +31,6 @@ import {
   Switch,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -44,9 +45,7 @@ export default function Create() {
   const { session } = useAuthStore();
   const { invalidate } = useFeedStore();
   const router = useRouter();
-  const scheme = useColorScheme();
-  const isDark = scheme === "dark";
-  const colors = Colors[isDark ? "dark" : "light"];
+  const colors = Colors.light;
 
   const [step, setStep] = useState(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
@@ -56,8 +55,7 @@ export default function Create() {
   const [options, setOptions] = useState(["", ""]);
   const [voteType, setVoteType] = useState<VoteType>("single");
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [endDateEnabled, setEndDateEnabled] = useState(false);
-  const [endDays, setEndDays] = useState("7");
+  const [endDays, setEndDays] = useState<number | null>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loadingTopics, setLoadingTopics] = useState(true);
@@ -257,11 +255,10 @@ export default function Create() {
     setSubmitting(true);
     try {
       const filledOptions = options.filter((o) => o.trim());
-      const endDate = endDateEnabled
-        ? new Date(
-            Date.now() + parseInt(endDays || "7") * 86400000,
-          ).toISOString()
-        : null;
+      const endDate =
+        endDays !== null
+          ? new Date(Date.now() + endDays * 86400000).toISOString()
+          : null;
 
       const { data: ses, error: sesError } = await supabase
         .from("ses")
@@ -314,8 +311,7 @@ export default function Create() {
     setOptions(["", ""]);
     setVoteType("single");
     setIsAnonymous(false);
-    setEndDateEnabled(false);
-    setEndDays("7");
+    setEndDays(null);
     setSelectedTopics([]);
     setMaxUnlockedStep(1);
     setStep(1);
@@ -341,7 +337,7 @@ export default function Create() {
     (step === 3 && !submitting);
 
   return (
-    <ThemedView className="flex-1 bg-white dark:bg-black items-center">
+    <ThemedView className="flex-1 bg-white items-center">
       <SafeAreaView
         className="flex-1 w-full"
         style={{ maxWidth: MaxContentWidth }}
@@ -352,13 +348,9 @@ export default function Create() {
             style={({ pressed }) => [
               { transform: [{ scale: pressed ? 0.92 : 1 }] },
             ]}
-            className="w-10 h-10 items-center justify-center rounded-full bg-neutral-50 dark:bg-neutral-900"
+            className="w-10 h-10 items-center justify-center rounded-full bg-neutral-50"
           >
-            <Ionicons
-              name="chevron-back"
-              size={20}
-              color={isDark ? "#fff" : "#000"}
-            />
+            <Ionicons name="chevron-back" size={20} color="#000" />
           </Pressable>
 
           <View className="flex-1 flex-row items-center">
@@ -376,24 +368,18 @@ export default function Create() {
                       step === s
                         ? "bg-sky-500"
                         : s < step
-                          ? "bg-black dark:bg-white"
+                          ? "bg-black"
                           : s <= maxUnlockedStep
-                            ? "bg-neutral-200 dark:bg-neutral-800"
-                            : "bg-neutral-100 dark:bg-neutral-900"
+                            ? "bg-neutral-200"
+                            : "bg-neutral-100"
                     }`}
                   >
                     {s < step ? (
-                      <Ionicons
-                        name="checkmark"
-                        size={13}
-                        color={isDark ? "#000" : "#fff"}
-                      />
+                      <Ionicons name="checkmark" size={13} color="#fff" />
                     ) : (
                       <Text
                         className={`text-xs font-black ${
-                          step === s
-                            ? "text-white"
-                            : "text-neutral-400 dark:text-neutral-600"
+                          step === s ? "text-white" : "text-neutral-400"
                         }`}
                       >
                         {s}
@@ -404,9 +390,7 @@ export default function Create() {
                 {i < 2 && (
                   <View
                     className={`flex-1 h-0.5 mx-1.5 ${
-                      s < step
-                        ? "bg-black dark:bg-white"
-                        : "bg-neutral-100 dark:bg-neutral-900"
+                      s < step ? "bg-black" : "bg-neutral-100"
                     }`}
                   />
                 )}
@@ -434,12 +418,12 @@ export default function Create() {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-              <ThemedText className="text-3xl font-black tracking-tight text-black dark:text-white mb-1">
+              <ThemedText className="text-3xl font-black tracking-tight text-black mb-1">
                 {step === 1 && "What's on your mind?"}
                 {step === 2 && "How should they answer?"}
                 {step === 3 && "Final details"}
               </ThemedText>
-              <ThemedText className="text-sm font-medium text-neutral-400 dark:text-neutral-500">
+              <ThemedText className="text-sm font-medium text-neutral-400">
                 {step === 1 && "Ask your audience anything."}
                 {step === 2 && "Give them some solid options to pick from."}
                 {step === 3 && "Fine-tune who sees this and how it runs."}
@@ -456,24 +440,21 @@ export default function Create() {
                     onFocus={() => setQFocused(true)}
                     onBlur={() => setQFocused(false)}
                     placeholder="What do you want to know?"
-                    placeholderTextColor={isDark ? "#525252" : "#a3a3a3"}
+                    placeholderTextColor="#a3a3a3"
                     multiline
                     maxLength={200}
                     autoFocus
-                    className={`bg-neutral-50 dark:bg-neutral-900 text-black dark:text-white rounded-2xl px-5 py-4 text-base font-semibold ${
-                      qFocused
-                        ? "bg-sky-50/50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400"
-                        : ""
+                    className={`bg-neutral-50 text-black rounded-2xl px-5 py-4 text-base font-semibold ${
+                      qFocused ? "bg-sky-50/50 text-sky-600" : ""
                     }`}
                     style={{ minHeight: 110, textAlignVertical: "top" }}
                   />
-                  <View className="flex-row justify-between items-center px-1 mt-2">
-                    <ThemedText className="text-xs font-bold text-sky-500">
-                      {question.length < 5 && question.length > 0
-                        ? "Keep typing..."
-                        : ""}
-                    </ThemedText>
-                    <ThemedText className="text-xs font-bold text-neutral-400 dark:text-neutral-600">
+                  <View className="flex-row justify-between items-start px-1 mt-2">
+                    <QualityHints
+                      question={question}
+                      description={description}
+                    />
+                    <ThemedText className="text-xs font-bold text-neutral-400 ml-auto">
                       {question.length}/200
                     </ThemedText>
                   </View>
@@ -487,18 +468,16 @@ export default function Create() {
                     onFocus={() => setDescFocused(true)}
                     onBlur={() => setDescFocused(false)}
                     placeholder="Add details so people vote better..."
-                    placeholderTextColor={isDark ? "#525252" : "#a3a3a3"}
+                    placeholderTextColor="#a3a3a3"
                     multiline
                     maxLength={300}
-                    className={`bg-neutral-50 dark:bg-neutral-900 text-black dark:text-white rounded-2xl px-5 py-4 text-sm font-medium ${
-                      descFocused
-                        ? "bg-sky-50/50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400"
-                        : ""
+                    className={`bg-neutral-50 text-black rounded-2xl px-5 py-4 text-sm font-medium ${
+                      descFocused ? "bg-sky-50/50 text-sky-600" : ""
                     }`}
                     style={{ minHeight: 90, textAlignVertical: "top" }}
                   />
                   <View className="px-1 mt-2">
-                    <ThemedText className="text-xs font-bold text-neutral-400 dark:text-neutral-600 text-right">
+                    <ThemedText className="text-xs font-bold text-neutral-400 text-right">
                       {description.length}/300
                     </ThemedText>
                   </View>
@@ -519,16 +498,14 @@ export default function Create() {
                           { transform: [{ scale: pressed ? 0.97 : 1 }] },
                         ]}
                         className={`flex-1 py-4 rounded-2xl items-center ${
-                          voteType === type
-                            ? "bg-black dark:bg-white"
-                            : "bg-neutral-50 dark:bg-neutral-900"
+                          voteType === type ? "bg-black" : "bg-neutral-50"
                         }`}
                       >
                         <Text
                           className={`text-sm font-black tracking-tight ${
                             voteType === type
-                              ? "text-white dark:text-black"
-                              : "text-neutral-400 dark:text-neutral-500"
+                              ? "text-white"
+                              : "text-neutral-400"
                           }`}
                         >
                           {type === "single" ? "Single Choice" : "Multiple"}
@@ -548,15 +525,15 @@ export default function Create() {
                           style={({ pressed }) => [
                             { transform: [{ scale: pressed ? 0.92 : 1 }] },
                           ]}
-                          className="flex-row items-center gap-1.5 bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 rounded-full"
+                          className="flex-row items-center gap-1.5 bg-sky-50 px-3 py-1.5 rounded-full"
                         >
                           <Ionicons name="sparkles" size={12} color="#0ea5e9" />
-                          <Text className="text-xs font-black text-sky-600 dark:text-sky-400">
+                          <Text className="text-xs font-black text-sky-600">
                             Magic Fill
                           </Text>
                         </Pressable>
                       )}
-                      <ThemedText className="text-xs font-bold text-neutral-400 dark:text-neutral-600">
+                      <ThemedText className="text-xs font-bold text-neutral-400">
                         {options.length}/{MAX_OPTIONS}
                       </ThemedText>
                     </View>
@@ -567,16 +544,12 @@ export default function Create() {
                       <View key={index} className="flex-row items-center gap-3">
                         <View
                           className={`w-7 h-7 rounded-full items-center justify-center flex-shrink-0 ${
-                            option.trim()
-                              ? "bg-sky-500"
-                              : "bg-neutral-100 dark:bg-neutral-900"
+                            option.trim() ? "bg-sky-500" : "bg-neutral-100"
                           }`}
                         >
                           <Text
                             className={`text-xs font-black ${
-                              option.trim()
-                                ? "text-white"
-                                : "text-neutral-400 dark:text-neutral-600"
+                              option.trim() ? "text-white" : "text-neutral-400"
                             }`}
                           >
                             {index + 1}
@@ -589,14 +562,14 @@ export default function Create() {
                           onFocus={() => setFocusedOptionIdx(index)}
                           onBlur={() => setFocusedOptionIdx(null)}
                           placeholder={`Option ${index + 1}`}
-                          placeholderTextColor={isDark ? "#525252" : "#a3a3a3"}
+                          placeholderTextColor="#a3a3a3"
                           maxLength={100}
                           returnKeyType={
                             index === options.length - 1 ? "done" : "next"
                           }
-                          className={`flex-1 bg-neutral-50 dark:bg-neutral-900 text-black dark:text-white rounded-2xl px-5 py-4 text-sm font-semibold ${
+                          className={`flex-1 bg-neutral-50 text-black rounded-2xl px-5 py-4 text-sm font-semibold ${
                             focusedOptionIdx === index
-                              ? "bg-sky-50/50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400"
+                              ? "bg-sky-50/50 text-sky-600"
                               : ""
                           }`}
                         />
@@ -607,13 +580,9 @@ export default function Create() {
                             style={({ pressed }) => [
                               { transform: [{ scale: pressed ? 0.85 : 1 }] },
                             ]}
-                            className="w-9 h-9 items-center justify-center rounded-full bg-neutral-50 dark:bg-neutral-900"
+                            className="w-9 h-9 items-center justify-center rounded-full bg-neutral-50"
                           >
-                            <Ionicons
-                              name="close"
-                              size={16}
-                              color={isDark ? "#ef4444" : "#f43f5e"}
-                            />
+                            <Ionicons name="close" size={16} color="#f43f5e" />
                           </Pressable>
                         )}
                       </View>
@@ -626,10 +595,10 @@ export default function Create() {
                       style={({ pressed }) => [
                         { transform: [{ scale: pressed ? 0.98 : 1 }] },
                       ]}
-                      className="flex-row items-center justify-center gap-2 py-4 mt-3 bg-sky-50/40 dark:bg-sky-950/10 rounded-2xl"
+                      className="flex-row items-center justify-center gap-2 py-4 mt-3 bg-sky-50/40 rounded-2xl"
                     >
                       <Ionicons name="add" size={18} color="#0ea5e9" />
-                      <Text className="text-sm font-black text-sky-600 dark:text-sky-400">
+                      <Text className="text-sm font-black text-sky-600">
                         Add Option
                       </Text>
                     </Pressable>
@@ -652,7 +621,7 @@ export default function Create() {
                           topic={topic}
                           selected={selectedTopics.includes(topic.id)}
                           onPress={() => toggleTopic(topic.id)}
-                          isDark={isDark}
+                          isDark={false}
                         />
                       ))}
                     </View>
@@ -667,14 +636,14 @@ export default function Create() {
                 <View className="gap-3">
                   <SectionLabel>Settings</SectionLabel>
 
-                  <View className="flex-row items-center justify-between py-4 px-5 bg-neutral-50 dark:bg-neutral-900 rounded-2xl">
+                  <View className="flex-row items-center justify-between py-4 px-5 bg-neutral-50 rounded-2xl">
                     <View className="flex-row items-center gap-3 flex-1">
                       <Ionicons name="eye-off" size={20} color="#0ea5e9" />
                       <View>
-                        <ThemedText className="text-sm font-bold text-black dark:text-white">
+                        <ThemedText className="text-sm font-bold text-black">
                           Anonymous Voting
                         </ThemedText>
-                        <ThemedText className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
+                        <ThemedText className="text-xs font-medium text-neutral-400">
                           Hide voter identities
                         </ThemedText>
                       </View>
@@ -682,65 +651,27 @@ export default function Create() {
                     <Switch
                       value={isAnonymous}
                       onValueChange={setIsAnonymous}
-                      trackColor={{
-                        false: isDark ? "#262626" : "#e5e5e5",
-                        true: "#0ea5e9",
-                      }}
-                      thumbColor={
-                        isDark ? (isAnonymous ? "#fff" : "#a3a3a3") : "#fff"
-                      }
+                      trackColor={{ false: "#e5e5e5", true: "#0ea5e9" }}
+                      thumbColor="#fff"
                     />
                   </View>
 
-                  <View className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl overflow-hidden">
-                    <View className="flex-row items-center justify-between py-4 px-5">
-                      <View className="flex-row items-center gap-3 flex-1">
-                        <Ionicons name="time" size={20} color="#0ea5e9" />
-                        <View>
-                          <ThemedText className="text-sm font-bold text-black dark:text-white">
-                            Expiry Date
-                          </ThemedText>
-                          <ThemedText className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
-                            Auto-close after set time
-                          </ThemedText>
-                        </View>
+                  <View className="bg-neutral-50 rounded-2xl px-5 py-4">
+                    <View className="flex-row items-center gap-3 mb-4">
+                      <Ionicons name="time" size={20} color="#0ea5e9" />
+                      <View>
+                        <ThemedText className="text-sm font-bold text-black">
+                          Expiry Date
+                        </ThemedText>
+                        <ThemedText className="text-xs font-medium text-neutral-400">
+                          Auto-close after set time
+                        </ThemedText>
                       </View>
-                      <Switch
-                        value={endDateEnabled}
-                        onValueChange={setEndDateEnabled}
-                        trackColor={{
-                          false: isDark ? "#262626" : "#e5e5e5",
-                          true: "#0ea5e9",
-                        }}
-                        thumbColor={
-                          isDark
-                            ? endDateEnabled
-                              ? "#fff"
-                              : "#a3a3a3"
-                            : "#fff"
-                        }
-                      />
                     </View>
-
-                    {endDateEnabled && (
-                      <View className="flex-row items-center gap-3 px-5 pb-4 bg-neutral-100/50 dark:bg-neutral-800/30">
-                        <ThemedText className="text-sm font-bold text-neutral-500">
-                          Close after
-                        </ThemedText>
-                        <TextInput
-                          value={endDays}
-                          onChangeText={(t) =>
-                            setEndDays(t.replace(/[^0-9]/g, "").slice(0, 3))
-                          }
-                          keyboardType="number-pad"
-                          maxLength={3}
-                          className="bg-white dark:bg-neutral-800 text-black dark:text-white rounded-xl px-4 py-2 text-sm font-black w-20 text-center text-sky-600 dark:text-sky-400"
-                        />
-                        <ThemedText className="text-sm font-bold text-neutral-500">
-                          days
-                        </ThemedText>
-                      </View>
-                    )}
+                    <EndDatePresets
+                      selectedDays={endDays}
+                      onSelect={setEndDays}
+                    />
                   </View>
                 </View>
               </Animated.View>
@@ -758,19 +689,15 @@ export default function Create() {
                 { marginBottom: BottomTabInset + Spacing.three },
               ]}
               className={`py-5 rounded-2xl items-center mt-8 ${
-                isCtaActive
-                  ? "bg-black dark:bg-white"
-                  : "bg-neutral-100 dark:bg-neutral-900"
+                isCtaActive ? "bg-black" : "bg-neutral-100"
               }`}
             >
               {submitting ? (
-                <ActivityIndicator color={isDark ? "#000" : "#fff"} />
+                <ActivityIndicator color="#fff" />
               ) : (
                 <Text
                   className={`text-base font-black tracking-tight ${
-                    isCtaActive
-                      ? "text-white dark:text-black"
-                      : "text-neutral-400 dark:text-neutral-600"
+                    isCtaActive ? "text-white" : "text-neutral-400"
                   }`}
                 >
                   {step < 3 ? "Continue" : "Launch Ses 🚀"}
@@ -786,7 +713,7 @@ export default function Create() {
           visible={showPostVote}
           sesId={createdSesId}
           userId={session.user.id}
-          isDark={isDark}
+          isDark={false}
           colors={colors}
           onDone={handlePostVoteDone}
         />

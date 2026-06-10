@@ -5,12 +5,18 @@
     "version": "1.0.9",
     "orientation": "portrait",
     "scheme": "ses",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "ios": {
       "icon": {
         "light": "./assets/images/icons/ios-icon-default.png",
         "dark": "./assets/images/icons/ios-icon-dark.png",
         "tinted": "./assets/images/icons/ios-icon-tinted.png"
+      },
+      "supportsTablet": false,
+      "jsEngine": "hermes",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -35,7 +41,15 @@
         }
       ],
       "package": "com.tclab.Ses",
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "jsEngine": "hermes",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ]
     },
     "web": {
       "output": "static"
@@ -72,13 +86,27 @@
         "expo-build-properties",
         {
           "android": {
-            "usePrecompiledHeaders": true
+            "usePrecompiledHeaders": true,
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": false
+          },
+          "ios": {
+            "useFrameworks": "static"
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icons/android-icon-monochrome.png",
+          "color": "#ffffff",
+          "iosDisplayInForeground": true,
+          "androidMode": "default"
         }
       ],
       "@react-native-google-signin/google-signin"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
@@ -91,4 +119,3 @@
     }
   }
 }
-

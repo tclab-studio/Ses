@@ -59,6 +59,7 @@ function GlassBlob({
   activeIndex,
   isDark,
 }: {
+  // @ts-ignore
   activeIndex: Animated.SharedValue<number>;
   isDark: boolean;
 }) {
@@ -179,6 +180,8 @@ function TabItemSmart({
 }
 
 function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+  const currentRoute = state.routes[state.index]?.name;
+  if (currentRoute === "create") return null;
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
@@ -247,6 +250,7 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 config={config}
                 index={index}
                 currentIndex={state.index}
+                // @ts-ignore
                 colors={colors}
                 onPress={() => {
                   const event = navigation.emit({
@@ -323,6 +327,7 @@ const styles = StyleSheet.create({
 export default function TabLayout() {
   return (
     <Tabs
+      // @ts-ignore
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
