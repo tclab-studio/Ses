@@ -43,9 +43,6 @@ app-example
 /ios
 /android
 
-# images
-/assets/images/onboard
-
 # supabase .temp
 /supabase/.temp
 .vercel
