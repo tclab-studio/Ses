@@ -40,14 +40,14 @@
         "cacheDefaultPaths": true
       },
       "android": {
-        "resourceClass": "large",
-        "gradleCommand": ":app:bundleRelease",
-        "buildType": "app-bundle"
+        "resourceClass": "medium",
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
       },
-      "ios": {
-        "resourceClass": "m1-large",
-        "buildConfiguration": "Release"
-      },
+      // "ios": {
+      //   "resourceClass": "m1-medium",
+      //   "buildConfiguration": "Release"
+      // },
       "env": {
         "NODE_ENV": "production"
       }
