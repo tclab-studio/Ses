@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "scheme": "ses",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "icon": {
         "light": "./assets/images/icons/ios-icon-default.png",
@@ -14,7 +13,6 @@
         "tinted": "./assets/images/icons/ios-icon-tinted.png"
       },
       "supportsTablet": false,
-      "jsEngine": "hermes",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,7 +40,7 @@
       ],
       "package": "com.tclab.Ses",
       "softwareKeyboardLayoutMode": "pan",
-      "jsEngine": "hermes",
+
       "allowBackup": false,
       "blockedPermissions": [
         "android.permission.READ_CONTACTS",
@@ -86,15 +84,19 @@
         "expo-build-properties",
         {
           "android": {
+            "newArchEnabled": true,
             "usePrecompiledHeaders": true,
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "useLegacyPackaging": false,
             "abiFilters": ["arm64-v8a"],
-            "targetSdkVersion": 35
+            "targetSdkVersion": 35,
+            "jsEngine": "hermes"
           },
           "ios": {
-            "useFrameworks": "static"
+            "newArchEnabled": true,
+            "useFrameworks": "static",
+            "jsEngine": "hermes"
           }
         }
       ],

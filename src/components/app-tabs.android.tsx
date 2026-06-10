@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Tabs } from "expo-router";
@@ -179,7 +178,7 @@ function TabItemSmart({
   );
 }
 
-function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+function FloatingTabBar({ state, navigation }: any) {
   const currentRoute = state.routes[state.index]?.name;
   if (currentRoute === "create") return null;
   const insets = useSafeAreaInsets();
@@ -241,7 +240,7 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         <GlassBlob activeIndex={activeIndex} isDark={isDark} />
 
         <View style={styles.tabsRow}>
-          {state.routes.map((route, index) => {
+          {state.routes.map((route: any, index: any) => {
             const config = TABS.find((t) => t.name === route.name);
             if (!config) return null;
             return (
