@@ -1,6 +1,7 @@
-import { ThemedText } from "@/components/themed-text";
+import { VoteReactionSheet } from "@/components/modals/vote-reaction-sheet";
 import { useFollow } from "@/hooks/useFollow";
 import { useLike } from "@/hooks/useLike";
+import { useVoters } from "@/hooks/useVoters";
 import { useAuthStore, useFeedStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
@@ -85,6 +86,7 @@ const OptionRow = React.memo(
     onPress,
     disabled,
     totalVotes,
+    agreePercent,
   }: {
     opt: { id: string; text: string; vote_count?: number };
     isSelected: boolean;
@@ -93,8 +95,11 @@ const OptionRow = React.memo(
     onPress: () => void;
     disabled: boolean;
     totalVotes: number;
+    agreePercent: number | null;
   }) => {
     const scale = useSharedValue(1);
+    const scheme = useColorScheme();
+    const isDark = scheme === "dark";
 
     const animStyle = useAnimatedStyle(() => ({
       transform: [{ scale: scale.value }],
@@ -106,6 +111,14 @@ const OptionRow = React.memo(
         ? Math.round((opt.vote_count / totalVotes) * 100)
         : 0;
 
+    const borderColor = isSelected
+      ? isDark
+        ? "rgba(255,255,255,0.5)"
+        : "rgba(0,0,0,0.75)"
+      : isDark
+        ? "rgba(255,255,255,0.07)"
+        : "rgba(0,0,0,0.07)";
+
     return (
       <Pressable
         onPressIn={() => {
@@ -116,12 +129,14 @@ const OptionRow = React.memo(
           scale.value = withSpring(1, { damping: 20 });
         }}
         onPress={isLocked || disabled ? undefined : onPress}
-        className={`flex-row items-center justify-between px-4 py-3.5 rounded-2xl overflow-hidden relative ${
-          isSelected
-            ? "bg-sky-500/10 dark:bg-sky-400/10 border border-sky-400/30"
-            : "bg-neutral-50 dark:bg-neutral-800/60"
-        }`}
-        style={{ opacity: isLocked ? 0.45 : 1 }}
+        style={{
+          opacity: isLocked ? 0.35 : 1,
+          borderRadius: 14,
+          overflow: "hidden",
+          borderWidth: 1.5,
+          borderColor,
+          backgroundColor: isDark ? "#0f0f0f" : "#fafafa",
+        }}
       >
         {hasVoted && opt.vote_count != null && (
           <View
@@ -131,36 +146,128 @@ const OptionRow = React.memo(
               top: 0,
               bottom: 0,
               width: `${pct}%`,
-              backgroundColor: isSelected ? "#0ea5e9" : "#bae6fd",
-              opacity: 0.12,
+              backgroundColor: isSelected
+                ? isDark
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(0,0,0,0.055)"
+                : isDark
+                  ? "rgba(255,255,255,0.025)"
+                  : "rgba(0,0,0,0.025)",
             }}
           />
         )}
 
         <Animated.View
-          style={animStyle}
-          className="flex-row items-center flex-1"
+          style={[
+            animStyle,
+            {
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 13,
+              gap: 10,
+            },
+          ]}
         >
+          <View
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: voteType === "multiple" ? 5 : 9,
+              borderWidth: 1.5,
+              borderColor: isSelected
+                ? isDark
+                  ? "#fff"
+                  : "#000"
+                : isDark
+                  ? "#333"
+                  : "#d0d0d0",
+              backgroundColor: isSelected
+                ? isDark
+                  ? "#fff"
+                  : "#000"
+                : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {isSelected && (
+              <Ionicons
+                name="checkmark"
+                size={10}
+                color={isDark ? "#000" : "#fff"}
+              />
+            )}
+          </View>
+
           <Text
-            className={`text-sm font-medium flex-1 pr-4 ${
-              isSelected
-                ? "text-sky-600 dark:text-sky-400 font-semibold"
-                : "text-neutral-800 dark:text-neutral-200"
-            }`}
+            style={{
+              flex: 1,
+              fontSize: 13,
+              fontWeight: isSelected ? "700" : "500",
+              color: isSelected
+                ? isDark
+                  ? "#fff"
+                  : "#000"
+                : isDark
+                  ? "#aaa"
+                  : "#555",
+            }}
             numberOfLines={2}
           >
             {opt.text}
           </Text>
-          {isSelected && (
-            <Ionicons name="checkmark-circle" size={18} color="#0ea5e9" />
+
+          {hasVoted && opt.vote_count != null && (
+            <View style={{ alignItems: "flex-end", gap: 3 }}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: "800",
+                  color: isSelected
+                    ? isDark
+                      ? "#fff"
+                      : "#000"
+                    : isDark
+                      ? "#555"
+                      : "#aaa",
+                  fontVariant: ["tabular-nums"],
+                  minWidth: 32,
+                  textAlign: "right",
+                }}
+              >
+                {pct}%
+              </Text>
+              {isSelected && agreePercent !== null && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 3,
+                    backgroundColor: isDark
+                      ? "rgba(16,185,129,0.14)"
+                      : "rgba(16,185,129,0.1)",
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 999,
+                  }}
+                >
+                  <Ionicons name="people-outline" size={9} color="#10b981" />
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: "800",
+                      color: "#10b981",
+                    }}
+                  >
+                    {agreePercent}%
+                  </Text>
+                </View>
+              )}
+            </View>
           )}
         </Animated.View>
-
-        {hasVoted && opt.vote_count != null && (
-          <Text className="text-xs font-bold text-sky-500 dark:text-sky-400 tabular-nums ml-2">
-            {pct}%
-          </Text>
-        )}
       </Pressable>
     );
   },
@@ -234,16 +341,16 @@ export function SesCardSkeleton() {
             <SkeletonBox width={48} height={8} borderRadius={6} />
           </View>
         </View>
-        <SkeletonBox width={80} height={26} borderRadius={999} />
+        <SkeletonBox width={60} height={24} borderRadius={999} />
       </View>
       <View className="mb-4 gap-1.5">
         <SkeletonBox width="90%" height={18} borderRadius={8} />
         <SkeletonBox width="65%" height={18} borderRadius={8} />
       </View>
       <View className="gap-2 mb-4">
-        <SkeletonBox height={48} borderRadius={16} />
-        <SkeletonBox height={48} borderRadius={16} />
-        <SkeletonBox height={48} borderRadius={16} />
+        <SkeletonBox height={44} borderRadius={14} />
+        <SkeletonBox height={44} borderRadius={14} />
+        <SkeletonBox height={44} borderRadius={14} />
       </View>
       <View className="flex-row items-center justify-between pt-3 border-t border-neutral-100 dark:border-neutral-800">
         <SkeletonBox width={80} height={12} borderRadius={6} />
@@ -286,18 +393,18 @@ function LikeButton({
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      className="flex-row items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-3 py-2 rounded-full"
+      className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800/80"
       onPress={handlePress}
     >
       <Animated.View style={animStyle}>
         <Ionicons
           name={liked ? "heart" : "heart-outline"}
-          size={16}
+          size={14}
           color={liked ? "#ef4444" : "#9ca3af"}
         />
       </Animated.View>
       <Text
-        className={`text-xs font-semibold ${liked ? "text-red-500" : "text-neutral-500 dark:text-neutral-400"}`}
+        className={`text-xs font-bold ${liked ? "text-red-500" : "text-neutral-400 dark:text-neutral-500"}`}
       >
         {likeCount > 0 ? likeCount : "0"}
       </Text>
@@ -349,7 +456,7 @@ function BookmarkButton({
       <Animated.View style={animStyle}>
         <Ionicons
           name={isBookmarked ? "bookmark" : "bookmark-outline"}
-          size={17}
+          size={16}
           color={isBookmarked ? "#f59e0b" : "#9ca3af"}
         />
       </Animated.View>
@@ -369,32 +476,27 @@ function FollowPill({
     currentUserId,
   );
 
+  if (following) return null;
+
   return (
     <TouchableOpacity
       onPress={toggleFollow}
       activeOpacity={0.75}
       disabled={loading}
       style={{
-        height: 28,
-        minWidth: 90,
-        paddingHorizontal: 12,
+        height: 24,
+        paddingHorizontal: 10,
         borderRadius: 999,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: following ? "transparent" : "#000",
-        borderWidth: 1.5,
-        borderColor: following ? "#d1d5db" : "#000",
-        opacity: loading ? 0.6 : 1,
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        borderColor: "#d1d5db",
+        opacity: loading ? 0.5 : 1,
       }}
     >
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: "700",
-          color: following ? "#6b7280" : "#fff",
-        }}
-      >
-        {loading ? "..." : following ? "Following" : "Subscribe"}
+      <Text style={{ fontSize: 10, fontWeight: "700", color: "#6b7280" }}>
+        {loading ? "···" : "Follow"}
       </Text>
     </TouchableOpacity>
   );
@@ -440,47 +542,85 @@ function Avatar({
   );
 }
 
-function OpinionMatchBadge({
+function FollowingVoterAvatars({
   sesId,
   userId,
+  totalVotes,
+  isDark,
+  onPress,
 }: {
   sesId: string;
   userId: string;
+  totalVotes: number;
+  isDark: boolean;
+  onPress: () => void;
 }) {
-  const [pct, setPct] = useState<number | null>(null);
+  const { data } = useVoters(sesId, userId);
+  const followingVoters = data?.followingVoters ?? [];
 
-  useEffect(() => {
-    supabase
-      .from("ses_votes")
-      .select("option_id")
-      .eq("ses_id", sesId)
-      .then(({ data }) => {
-        if (!data || data.length < 5) return;
-        supabase
-          .from("ses_votes")
-          .select("option_id")
-          .eq("ses_id", sesId)
-          .eq("user_id", userId)
-          .then(({ data: myVotes }) => {
-            if (!myVotes?.length) return;
-            const myOptionIds = myVotes.map((v) => v.option_id);
-            const matching = data.filter((v) =>
-              myOptionIds.includes(v.option_id),
-            ).length;
-            setPct(Math.round((matching / data.length) * 100));
-          });
-      });
-  }, [sesId, userId]);
+  if (followingVoters.length === 0 && totalVotes === 0) return null;
 
-  if (pct === null) return null;
+  const extraCount =
+    (data?.voters
+      ? new Set(data.voters.map((v) => v.user_id)).size
+      : totalVotes) - followingVoters.length;
 
   return (
-    <View className="flex-row items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-      <Ionicons name="people-outline" size={11} color="#10b981" />
-      <Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-        {pct}% agree
-      </Text>
-    </View>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+    >
+      {followingVoters.length > 0 && (
+        <View style={{ flexDirection: "row" }}>
+          {followingVoters.map((voter, i) => (
+            <View
+              key={voter.user_id}
+              style={{
+                marginLeft: i === 0 ? 0 : -8,
+                borderWidth: 2,
+                borderColor: isDark ? "#000" : "#fff",
+                borderRadius: 999,
+                zIndex: followingVoters.length - i,
+              }}
+            >
+              <Avatar
+                key={`${voter.user_id}-${voter.option_id ?? i}-${i}`}
+                uri={voter.avatar_url}
+                name={voter.username ?? "anon"}
+              />
+            </View>
+          ))}
+        </View>
+      )}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+        <Ionicons
+          name="stats-chart-outline"
+          size={12}
+          color={isDark ? "#444" : "#ccc"}
+        />
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "700",
+            color: isDark ? "#444" : "#bbb",
+          }}
+        >
+          {totalVotes}
+        </Text>
+        {extraCount > 0 && followingVoters.length > 0 && (
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: "600",
+              color: isDark ? "#333" : "#ccc",
+            }}
+          >
+            +{extraCount} more
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -494,10 +634,35 @@ export const SesCard = React.memo(
     const isOwn = sessionUserId === item.created_by;
     const [descExpanded, setDescExpanded] = useState(false);
     const [voting, setVoting] = useState(false);
+    const [reactionSheet, setReactionSheet] = useState<{
+      visible: boolean;
+      optionId: string;
+    }>({ visible: false, optionId: "" });
 
-    const displayName = item.author?.username ?? "Anonymous";
-    const avatar = item.author?.avatar_url ?? null;
+    const displayName = item.is_anonymous
+      ? "anon"
+      : (item.author?.username ?? "anonymous");
+    const avatar = item.is_anonymous ? null : (item.author?.avatar_url ?? null);
     const hot = isHot(item.vote_count, item.created_at);
+
+    const agreePercent = useMemo(() => {
+      if (!item.has_voted || item.vote_count < 5) return null;
+      const safeSelectedIds = item.selected_option_ids ?? [];
+      const myVotedOptions = (item.options ?? []).filter((o) =>
+        safeSelectedIds.includes(o.id),
+      );
+      if (myVotedOptions.length === 0) return null;
+      const myVoteTotal = myVotedOptions.reduce(
+        (acc, o) => acc + (o.vote_count ?? 0),
+        0,
+      );
+      return Math.round((myVoteTotal / item.vote_count) * 100);
+    }, [
+      item.has_voted,
+      item.vote_count,
+      item.selected_option_ids,
+      item.options,
+    ]);
 
     const handleVote = useCallback(
       async (optionId: string) => {
@@ -514,6 +679,7 @@ export const SesCard = React.memo(
             user_id: sessionUserId,
           });
           setVoting(false);
+          setReactionSheet({ visible: true, optionId });
         } else {
           if (isSelected) {
             optimisticUnvote(item.id, optionId);
@@ -534,16 +700,12 @@ export const SesCard = React.memo(
               user_id: sessionUserId,
             });
             setVoting(false);
+            setReactionSheet({ visible: true, optionId });
           }
         }
       },
       [sessionUserId, voting, item],
     );
-
-    const cardScale = useSharedValue(1);
-    const cardStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: cardScale.value }],
-    }));
 
     const totalVotes = item.vote_count ?? 0;
     const safeOptions = item?.options ?? [];
@@ -562,6 +724,9 @@ export const SesCard = React.memo(
             onPress={() => handleVote(opt.id)}
             disabled={voting}
             totalVotes={totalVotes}
+            agreePercent={
+              safeSelectedIds.includes(opt.id) ? agreePercent : null
+            }
           />
         ));
     }, [
@@ -572,6 +737,7 @@ export const SesCard = React.memo(
       voting,
       handleVote,
       totalVotes,
+      agreePercent,
     ]);
 
     const displayTime = useMemo(
@@ -579,167 +745,352 @@ export const SesCard = React.memo(
       [item.created_at],
     );
 
+    const cardBg = isDark ? "#0d0d0d" : "#ffffff";
+    const borderColor = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.06)";
+
     return (
-      <Animated.View
-        style={cardStyle}
-        className="bg-white dark:bg-neutral-900 rounded-3xl p-4 mb-1 shadow-sm shadow-black/[0.03]"
-      >
-        <View className="flex-row items-center justify-between mb-3">
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              if (item.author?.username) {
-                router.push(`/${item.author.username}/page` as any);
-              }
-            }}
+      <>
+        <View
+          style={{
+            backgroundColor: cardBg,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor,
+            overflow: "hidden",
+          }}
+        >
+          <View style={{ padding: 16 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 12,
+                gap: 8,
+              }}
+            >
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  if (!item.is_anonymous && item.author?.username) {
+                    router.push(`/${item.author.username}/page` as any);
+                  }
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 9 }}
+              >
+                <Avatar uri={avatar} name={displayName} size={34} />
+                <View style={{ gap: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: "700",
+                      color: isDark ? "#e8e8e8" : "#111",
+                    }}
+                  >
+                    @{displayName}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: isDark ? "#555" : "#aaa",
+                      fontWeight: "500",
+                    }}
+                  >
+                    {displayTime}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <View
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: 6,
+                }}
+              >
+                {hot && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 3,
+                      backgroundColor: isDark
+                        ? "rgba(251,146,60,0.12)"
+                        : "rgba(251,146,60,0.1)",
+                      paddingHorizontal: 7,
+                      paddingVertical: 3,
+                      borderRadius: 999,
+                    }}
+                  >
+                    <Text style={{ fontSize: 9 }}>🔥</Text>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "800",
+                        color: "#f97316",
+                      }}
+                    >
+                      hot
+                    </Text>
+                  </View>
+                )}
+                {item.end_date && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 3,
+                      backgroundColor: isDark ? "#1a1a1a" : "#f5f5f5",
+                      paddingHorizontal: 7,
+                      paddingVertical: 3,
+                      borderRadius: 999,
+                    }}
+                  >
+                    <Ionicons
+                      name="time-outline"
+                      size={9}
+                      color={isDark ? "#555" : "#aaa"}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "600",
+                        color: isDark ? "#555" : "#aaa",
+                      }}
+                    >
+                      {formatCountdown(item.end_date)}
+                    </Text>
+                  </View>
+                )}
+                <View
+                  style={{
+                    paddingHorizontal: 7,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor: isDark ? "#1a1a1a" : "#f5f5f5",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: "800",
+                      color: isDark ? "#444" : "#bbb",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {item.vote_type === "single" ? "single" : "multi"}
+                  </Text>
+                </View>
+                {!isOwn && (
+                  <FollowPill
+                    targetUserId={item.created_by}
+                    currentUserId={sessionUserId ?? null}
+                  />
+                )}
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => router.push(`/ses/${item.id}` as any)}
+              activeOpacity={0.8}
+              style={{ marginBottom: item.description ? 6 : 12 }}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: "800",
+                  letterSpacing: -0.3,
+                  lineHeight: 21,
+                  color: isDark ? "#f0f0f0" : "#0a0a0a",
+                }}
+              >
+                {item.question}
+              </Text>
+            </TouchableOpacity>
+
+            {item.description ? (
+              <Pressable
+                onPress={() => setDescExpanded((v) => !v)}
+                style={{ marginBottom: 10 }}
+              >
+                <Text
+                  numberOfLines={descExpanded ? undefined : 2}
+                  style={{
+                    fontSize: 12,
+                    color: isDark ? "#555" : "#999",
+                    lineHeight: 18,
+                  }}
+                >
+                  {item.description}
+                </Text>
+                {item.description.length > 80 && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: isDark ? "#444" : "#bbb",
+                      marginTop: 2,
+                    }}
+                  >
+                    {descExpanded ? "less" : "more"}
+                  </Text>
+                )}
+              </Pressable>
+            ) : null}
+
+            {item.topics && item.topics.length > 0 && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 5,
+                  marginBottom: 10,
+                }}
+              >
+                {item.topics.map((t) => (
+                  <View
+                    key={t.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 3,
+                      backgroundColor: isDark ? "#1a1a1a" : "#f5f5f5",
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 999,
+                    }}
+                  >
+                    {t.emoji ? (
+                      <Text style={{ fontSize: 9 }}>{t.emoji}</Text>
+                    ) : null}
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "600",
+                        color: isDark ? "#555" : "#999",
+                      }}
+                    >
+                      {t.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ gap: 6, marginBottom: 10 }}>
+              {renderedOptions}
+              {item.option_count > 3 && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/ses/${item.id}` as any)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: isDark ? "#444" : "#bbb",
+                      paddingLeft: 4,
+                      marginTop: 2,
+                    }}
+                  >
+                    +{item.option_count - 3} more options
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {item.vote_count < 5 && !item.has_voted && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  marginBottom: 8,
+                }}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={11}
+                  color="#f59e0b"
+                />
+                <Text
+                  style={{ fontSize: 11, fontWeight: "600", color: "#f59e0b" }}
+                >
+                  needs more opinions
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 10,
-              flex: 1,
-              marginRight: 8,
+              justifyContent: "space-between",
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderTopColor: isDark
+                ? "rgba(255,255,255,0.04)"
+                : "rgba(0,0,0,0.05)",
+              backgroundColor: isDark
+                ? "rgba(255,255,255,0.015)"
+                : "rgba(0,0,0,0.015)",
             }}
           >
-            <Avatar uri={avatar} name={displayName} size={36} />
-            <View style={{ gap: 2 }}>
-              <ThemedText
-                className="text-[13px] font-bold text-neutral-900 dark:text-neutral-100"
-                numberOfLines={1}
-              >
-                @{displayName}
-              </ThemedText>
-              <Text style={{ fontSize: 11, color: "#9ca3af" }}>
-                {displayTime}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <View className="flex-row items-center gap-2">
-            {hot && (
-              <View className="flex-row items-center gap-1 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded-full">
-                <Text style={{ fontSize: 10 }}>🔥</Text>
-                <Text className="text-[10px] font-bold text-orange-500">
-                  hot
-                </Text>
-              </View>
-            )}
-            {item.end_date && (
-              <View className="flex-row items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-                <Ionicons
-                  name="time-outline"
-                  size={10}
-                  color={isDark ? "#737373" : "#a3a3a3"}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              {sessionUserId ? (
+                <FollowingVoterAvatars
+                  sesId={item.id}
+                  userId={sessionUserId}
+                  totalVotes={totalVotes}
+                  isDark={isDark}
+                  onPress={() => router.push(`/ses/${item.id}/voters` as any)}
                 />
-                <Text className="text-[10px] font-medium text-neutral-400">
-                  {formatCountdown(item.end_date)}
-                </Text>
-              </View>
-            )}
-            <View className="bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md">
-              <Text className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                {item.vote_type}
-              </Text>
+              ) : (
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                >
+                  <Ionicons
+                    name="stats-chart-outline"
+                    size={12}
+                    color={isDark ? "#444" : "#ccc"}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      color: isDark ? "#444" : "#bbb",
+                    }}
+                  >
+                    {totalVotes}
+                  </Text>
+                </View>
+              )}
             </View>
-            {!isOwn && (
-              <FollowPill
-                targetUserId={item.created_by}
-                currentUserId={sessionUserId ?? null}
-              />
-            )}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push(`/ses/${item.id}` as any)}
-          activeOpacity={0.8}
-          className="mb-1"
-        >
-          <ThemedText className="text-base font-bold tracking-tight leading-snug text-neutral-900 dark:text-neutral-50">
-            {item.question}
-          </ThemedText>
-        </TouchableOpacity>
-
-        {item.description ? (
-          <Pressable
-            onPress={() => setDescExpanded((v) => !v)}
-            className="mb-3"
-          >
-            <ThemedText
-              numberOfLines={descExpanded ? undefined : 2}
-              className="text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed"
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
             >
-              {item.description}
-            </ThemedText>
-            {item.description.length > 80 && (
-              <Text className="text-xs font-semibold text-neutral-400 mt-0.5">
-                {descExpanded ? "less" : "more"}
-              </Text>
-            )}
-          </Pressable>
-        ) : (
-          <View className="mb-3" />
-        )}
-
-        {item.topics && item.topics.length > 0 && (
-          <View className="flex-row flex-wrap gap-1.5 mb-3">
-            {item.topics.map((t) => (
-              <View
-                key={t.id}
-                className="flex-row items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full"
-              >
-                {t.emoji ? (
-                  <Text style={{ fontSize: 10 }}>{t.emoji}</Text>
-                ) : null}
-                <Text className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                  {t.name}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View className="gap-2 mb-3">
-          {renderedOptions}
-          {item.option_count > 3 && (
-            <TouchableOpacity
-              onPress={() => router.push(`/ses/${item.id}` as any)}
-              activeOpacity={0.7}
-            >
-              <Text className="text-xs font-medium text-neutral-400 dark:text-neutral-500 pl-1 mt-0.5">
-                + {item.option_count - 3} more options
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {item.vote_count < 5 && !item.has_voted && (
-          <View className="flex-row items-center gap-1.5 mb-2">
-            <Ionicons name="alert-circle-outline" size={12} color="#f59e0b" />
-            <Text className="text-[11px] font-medium text-amber-500">
-              needs more opinions
-            </Text>
-          </View>
-        )}
-
-        <View className="flex-row items-center justify-between pt-3 border-t border-neutral-100 dark:border-neutral-800">
-          <View className="flex-row items-center gap-2">
-            <View className="flex-row items-center gap-1">
-              <Ionicons name="bar-chart-outline" size={14} color="#9ca3af" />
-              <Text className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                {item.vote_count}{" "}
-                {item.vote_count === 1 ? "response" : "responses"}
-              </Text>
+              <BookmarkButton sesId={item.id} userId={sessionUserId ?? null} />
+              <LikeButton sesId={item.id} userId={sessionUserId ?? null} />
             </View>
-            {item.has_voted && sessionUserId && (
-              <OpinionMatchBadge sesId={item.id} userId={sessionUserId} />
-            )}
-          </View>
-          <View className="flex-row items-center gap-1">
-            <BookmarkButton sesId={item.id} userId={sessionUserId ?? null} />
-            <LikeButton sesId={item.id} userId={sessionUserId ?? null} />
           </View>
         </View>
-      </Animated.View>
+
+        {sessionUserId && (
+          <VoteReactionSheet
+            visible={reactionSheet.visible}
+            sesId={item.id}
+            optionId={reactionSheet.optionId}
+            userId={sessionUserId}
+            onDone={() => setReactionSheet({ visible: false, optionId: "" })}
+          />
+        )}
+      </>
     );
   },
   () => false,

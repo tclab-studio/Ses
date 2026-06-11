@@ -33,7 +33,9 @@ async function getGeoCache(): Promise<IpGeoData | null> {
       }
       return entry.data;
     }
-    const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+    const AsyncStorage = (
+      await import("@react-native-async-storage/async-storage")
+    ).default;
     const raw = await AsyncStorage.getItem(GEO_CACHE_KEY);
     if (!raw) return null;
     const entry: GeoCacheEntry = JSON.parse(raw);
@@ -54,27 +56,32 @@ async function setGeoCache(data: IpGeoData): Promise<void> {
       localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(entry));
       return;
     }
-    const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+    const AsyncStorage = (
+      await import("@react-native-async-storage/async-storage")
+    ).default;
     await AsyncStorage.setItem(GEO_CACHE_KEY, JSON.stringify(entry));
   } catch {}
 }
 
 async function fetchFromApi(): Promise<IpGeoData | null> {
   try {
-    const res = await fetch("https://ipapi.co/json/");
+    const res = await fetch("https://ipwho.is/");
     if (!res.ok) return null;
+
     const json = await res.json();
-    if (json.error) return null;
+
+    if (json.success === false) return null;
+
     return {
       ip: json.ip ?? null,
       city: json.city ?? null,
       region: json.region ?? null,
-      country_name: json.country_name ?? null,
+      country_name: json.country ?? null,
       country_code: json.country_code ?? null,
       latitude: json.latitude ?? null,
       longitude: json.longitude ?? null,
-      org: json.org ?? null,
-      timezone: json.timezone ?? null,
+      org: json.connection?.isp ?? null,
+      timezone: json.timezone?.id ?? null,
     };
   } catch {
     return null;
@@ -165,3 +172,4 @@ export async function syncDeviceCity(userId: string): Promise<string | null> {
 
   return city;
 }
+

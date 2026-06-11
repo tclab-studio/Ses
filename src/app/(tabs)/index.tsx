@@ -11,7 +11,7 @@ import { useAuthStore, useFeedStore } from "@/stores";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { memo, useCallback, useEffect, useRef } from "react";
 import {
   Animated,
   FlatList,
@@ -35,12 +35,12 @@ const SkeletonList = () => (
     }}
   >
     {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-      <SesCardSkeleton key={i} />
+      <SesCardSkeleton key={`skeleton-${i}`} />
     ))}
   </View>
 );
 
-const EmptyState = () => (
+const EmptyState = memo(() => (
   <View className="items-center justify-center pt-32 gap-4">
     <View className="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-900 items-center justify-center">
       <Ionicons name="chatbubbles-outline" size={28} color="#9ca3af" />
@@ -54,7 +54,7 @@ const EmptyState = () => (
       </ThemedText>
     </View>
   </View>
-);
+));
 
 type FilterOption = {
   key: "all" | "following" | "topics" | "trending";
@@ -68,6 +68,65 @@ const FILTERS: FilterOption[] = [
   { key: "topics", label: "Topics", icon: "pricetags-outline" },
   { key: "trending", label: "Trending", icon: "flame-outline" },
 ];
+
+const FilterButton = memo(
+  ({
+    filter,
+    active,
+    isDark,
+    onPress,
+  }: {
+    filter: FilterOption;
+    active: boolean;
+    isDark: boolean;
+    onPress: (key: string) => void;
+  }) => {
+    return (
+      <TouchableOpacity
+        onPress={() => onPress(filter.key)}
+        activeOpacity={0.75}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 5,
+          paddingHorizontal: 14,
+          paddingVertical: 7,
+          borderRadius: 999,
+          backgroundColor: active
+            ? isDark
+              ? "#fff"
+              : "#111"
+            : isDark
+              ? "#171717"
+              : "#f3f4f6",
+        }}
+      >
+        <Ionicons
+          name={filter.icon as any}
+          size={13}
+          color={
+            active ? (isDark ? "#000" : "#fff") : isDark ? "#555" : "#9ca3af"
+          }
+        />
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "700",
+            color: active
+              ? isDark
+                ? "#000"
+                : "#fff"
+              : isDark
+                ? "#555"
+                : "#6b7280",
+          }}
+        >
+          {filter.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  },
+);
 
 export default function HomeScreen() {
   const { session } = useAuthStore();
@@ -92,35 +151,44 @@ export default function HomeScreen() {
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [refreshing, setRefreshing] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
+
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const fadeIn = () => {
+  const triggerFadeIn = useCallback(() => {
+    fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 420,
+      duration: 400,
       useNativeDriver: true,
     }).start();
-  };
+  }, [fadeAnim]);
 
   useEffect(() => {
     if (!session?.user?.id) return;
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", session.user.id)
-      .eq("read", false)
-      .then(({ count }) => setUnreadCount(count ?? 0));
+
+    const fetchNotifications = async () => {
+      const { count } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .eq("read", false);
+      setUnreadCount(count ?? 0);
+    };
+
+    fetchNotifications();
   }, [session?.user?.id]);
 
   const load = useCallback(
     async (force = false) => {
-      if (!force && !isStale()) {
-        if (!loading) fadeIn();
-        return;
-      }
-
       try {
+        if (!force && !isStale()) {
+          setLoading(false);
+          setRefreshing(false);
+          triggerFadeIn();
+          return;
+        }
+
         let query = supabase
           .from("ses")
           .select(
@@ -137,7 +205,10 @@ export default function HomeScreen() {
         }
 
         const { data: sesData } = await query;
-        if (!sesData) return;
+        if (!sesData || sesData.length === 0) {
+          setFeed([]);
+          return;
+        }
 
         let filteredSesData = sesData;
 
@@ -146,6 +217,7 @@ export default function HomeScreen() {
             .from("follows")
             .select("following_id")
             .eq("follower_id", session.user.id);
+
           const followingIds = new Set(
             (follows ?? []).map((f) => f.following_id),
           );
@@ -159,12 +231,15 @@ export default function HomeScreen() {
             .from("user_topics")
             .select("topic_id")
             .eq("user_id", session.user.id);
+
           const topicIds = (userTopics ?? []).map((t) => t.topic_id);
+
           if (topicIds.length > 0) {
             const { data: sesTopics } = await supabase
               .from("ses_topics")
               .select("ses_id")
               .in("topic_id", topicIds);
+
             const sesIdsWithTopics = new Set(
               (sesTopics ?? []).map((t) => t.ses_id),
             );
@@ -214,6 +289,7 @@ export default function HomeScreen() {
         const voteCounts: Record<string, number> = {};
         const userVotedSes = new Set<string>();
         const selectedOptionsBySes: Record<string, string[]> = {};
+
         votesRes.data?.forEach((v) => {
           voteCounts[v.ses_id] = (voteCounts[v.ses_id] ?? 0) + 1;
           if (v.user_id === session?.user?.id) {
@@ -256,22 +332,20 @@ export default function HomeScreen() {
             topics: topicsBySes[s.id] ?? [],
           })),
         );
+      } catch (error) {
+        console.error(error);
       } finally {
         setLoading(false);
         setRefreshing(false);
-        fadeIn();
+        triggerFadeIn();
       }
     },
-    [session?.user?.id, isStale, selectedFilter],
+    [session?.user?.id, isStale, selectedFilter, triggerFadeIn],
   );
 
   useEffect(() => {
-    load();
+    load(true);
   }, [load]);
-
-  useEffect(() => {
-    if (!loading && feed.length > 0) fadeIn();
-  }, [loading]);
 
   useEffect(() => {
     channelRef.current = supabase
@@ -350,17 +424,27 @@ export default function HomeScreen() {
     };
   }, [session?.user?.id]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     load(true);
-  };
+  }, [load]);
 
-  const handleFilterChange = (
-    f: "all" | "following" | "topics" | "trending",
-  ) => {
-    setSelectedFilter(f);
-    setLoading(true);
-  };
+  const handleFilterChange = useCallback(
+    (f: string) => {
+      if (f !== selectedFilter) {
+        setSelectedFilter(f as any);
+        setLoading(true);
+      }
+    },
+    [selectedFilter, setSelectedFilter],
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: any) => (
+      <SesCard item={item} key={`${item.id}-${index}`} />
+    ),
+    [],
+  );
 
   return (
     <ThemedView className="flex-1 items-center bg-neutral-50 dark:bg-neutral-950">
@@ -413,60 +497,15 @@ export default function HomeScreen() {
               gap: 8,
             }}
           >
-            {FILTERS.map((f) => {
-              const active = selectedFilter === f.key;
-              return (
-                <TouchableOpacity
-                  key={f.key}
-                  onPress={() => handleFilterChange(f.key)}
-                  activeOpacity={0.75}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 5,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: active
-                      ? isDark
-                        ? "#fff"
-                        : "#111"
-                      : isDark
-                        ? "#171717"
-                        : "#f3f4f6",
-                  }}
-                >
-                  <Ionicons
-                    name={f.icon as any}
-                    size={13}
-                    color={
-                      active
-                        ? isDark
-                          ? "#000"
-                          : "#fff"
-                        : isDark
-                          ? "#555"
-                          : "#9ca3af"
-                    }
-                  />
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: active
-                        ? isDark
-                          ? "#000"
-                          : "#fff"
-                        : isDark
-                          ? "#555"
-                          : "#6b7280",
-                    }}
-                  >
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {FILTERS.map((f) => (
+              <FilterButton
+                key={f.key}
+                filter={f}
+                active={selectedFilter === f.key}
+                isDark={isDark}
+                onPress={handleFilterChange}
+              />
+            ))}
           </ScrollView>
         </View>
 
@@ -476,8 +515,8 @@ export default function HomeScreen() {
           <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
             <FlatList
               data={feed}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <SesCard item={item} />}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              renderItem={renderItem}
               contentContainerStyle={{
                 paddingHorizontal: Spacing.four,
                 paddingTop: Spacing.four,
@@ -493,6 +532,10 @@ export default function HomeScreen() {
                 />
               }
               showsVerticalScrollIndicator={false}
+              initialNumToRender={5}
+              maxToRenderPerBatch={5}
+              windowSize={5}
+              removeClippedSubviews={true}
             />
           </Animated.View>
         )}

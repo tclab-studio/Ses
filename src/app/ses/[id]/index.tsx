@@ -1,3 +1,4 @@
+import { VoteReactionSheet } from "@/components/modals/vote-reaction-sheet";
 import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/hooks/useAuth";
@@ -411,6 +412,11 @@ export default function SesDetail() {
   const isDark = scheme === "dark";
   const colors = Colors[isDark ? "dark" : "light"];
 
+  const [reactionSheet, setReactionSheet] = useState<{
+    visible: boolean;
+    optionId: string;
+  }>({ visible: false, optionId: "" });
+
   const [ses, setSes] = useState<Ses | null>(null);
   const [author, setAuthor] = useState<AuthorProfile | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
@@ -492,6 +498,8 @@ export default function SesDetail() {
           option_id: optionId,
           user_id: session.user.id,
         });
+        await load();
+        setReactionSheet({ visible: true, optionId });
       } else {
         if (myVotes.includes(optionId)) {
           await supabase
@@ -500,15 +508,17 @@ export default function SesDetail() {
             .eq("ses_id", id)
             .eq("option_id", optionId)
             .eq("user_id", session.user.id);
+          await load();
         } else {
           await supabase.from("ses_votes").insert({
             ses_id: id,
             option_id: optionId,
             user_id: session.user.id,
           });
+          await load();
+          setReactionSheet({ visible: true, optionId });
         }
       }
-      await load();
     } catch {
       Alert.alert("Error", "Vote failed. Try again.");
     } finally {
@@ -1054,6 +1064,15 @@ export default function SesDetail() {
           </Animated.View>
         </ScrollView>
       </SafeAreaView>
+      {session?.user?.id && (
+        <VoteReactionSheet
+          visible={reactionSheet.visible}
+          sesId={ses?.id ?? ""}
+          optionId={reactionSheet.optionId}
+          userId={session.user.id}
+          onDone={() => setReactionSheet({ visible: false, optionId: "" })}
+        />
+      )}
     </ThemedView>
   );
 }
