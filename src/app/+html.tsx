@@ -1,6 +1,8 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import React from "react";
 
+const isTelegramTarget = process.env.EXPO_PUBLIC_TARGET === "telegram";
+
 export default function Root({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -12,7 +14,9 @@ export default function Root({ children }: { children: React.ReactNode }) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
 
-        <script src="https://telegram.org/js/telegram-web-app.js" defer />
+        {isTelegramTarget && (
+          <script src="https://telegram.org/js/telegram-web-app.js" defer />
+        )}
 
         <ScrollViewStyleReset />
       </head>

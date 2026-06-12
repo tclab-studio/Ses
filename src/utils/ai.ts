@@ -3,6 +3,7 @@ import OpenAI from "openai";
 const nvidiaClient = new OpenAI({
   apiKey: process.env.EXPO_PUBLIC_NVIDIA_API_KEY ?? "",
   baseURL: "https://integrate.api.nvidia.com/v1",
+  dangerouslyAllowBrowser: true,
 });
 
 export type SesProcessingResult = {

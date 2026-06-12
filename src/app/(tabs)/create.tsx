@@ -8,11 +8,7 @@ import {
 import { ThemedView } from "@/components/themed-view";
 import { BottomTabInset, Colors, MaxContentWidth } from "@/constants/theme";
 import { useAuthStore, useFeedStore } from "@/stores";
-import {
-  aiMagicFill,
-  enhanceQuestion,
-  processSes
-} from "@/utils/ai";
+import { aiMagicFill, enhanceQuestion, processSes } from "@/utils/ai";
 import { supabase } from "@/utils/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -344,14 +340,7 @@ export default function Create() {
     setMaxUnlockedStep(1);
     setStep(1);
 
-    Alert.alert("Ses is live!", "Your question is out there.", [
-      {
-        text: "View it",
-        onPress: () =>
-          createdSesId && router.push(`/ses/${createdSesId}` as any),
-      },
-      { text: "Create another", style: "cancel" },
-    ]);
+    router.push(`/ses/${createdSesId}` as any);
   };
 
   const isBusy = moderating || submitting || magicFilling || isEnhancing;

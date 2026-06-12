@@ -64,6 +64,7 @@ async function setGeoCache(data: IpGeoData): Promise<void> {
 }
 
 async function fetchFromApi(): Promise<IpGeoData | null> {
+  if (Platform.OS === "web") return null;
   try {
     const res = await fetch("https://ipwho.is/");
     if (!res.ok) return null;
@@ -103,6 +104,8 @@ export async function fetchIpCity(): Promise<string | null> {
 }
 
 export async function syncGeoOnAuth(userId: string): Promise<void> {
+  if (Platform.OS === "web") return;
+
   const cached = await getGeoCache();
 
   if (cached) {

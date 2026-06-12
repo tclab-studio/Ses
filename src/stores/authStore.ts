@@ -1,5 +1,5 @@
 import { syncGeoOnAuth } from "@/utils/geo";
-import { supabase } from "@/utils/supabase";
+import { redirectUrl, supabase } from "@/utils/supabase";
 import { Session } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import { create } from "zustand";
@@ -61,16 +61,19 @@ export const useAuthStore = create<AuthStore>((set) => ({
     if (Platform.OS === "web") {
       set({ loading: true });
       try {
-        const { error } = await supabase.auth.signInWithOAuth({
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
-            redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: false,
           },
         });
         if (error) throw error;
+        if (data?.url) {
+          window.location.href = data.url;
+        }
       } catch (err) {
         console.error("Google OAuth error:", err);
-      } finally {
         set({ loading: false });
       }
       return;
@@ -89,8 +92,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
       if (error) throw error;
     } catch (err: any) {
-      const isErrorWithCode = (await import("@react-native-google-signin/google-signin")).isErrorWithCode;
-      const statusCodes = (await import("@react-native-google-signin/google-signin")).statusCodes;
+      const isErrorWithCode = (
+        await import("@react-native-google-signin/google-signin")
+      ).isErrorWithCode;
+      const statusCodes = (
+        await import("@react-native-google-signin/google-signin")
+      ).statusCodes;
       if (isErrorWithCode(err)) {
         switch (err.code) {
           case statusCodes.SIGN_IN_CANCELLED:
@@ -127,7 +134,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
       );
 
       const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error ?? "TG auth failed");
+      if (!res.ok || json.error)
+        throw new Error(json.error ?? "TG auth failed");
 
       const { error } = await supabase.auth.setSession({
         access_token: json.access_token,
@@ -146,7 +154,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
     await supabase.auth.signOut();
     if (Platform.OS !== "web") {
       try {
-        const { GoogleSignin } = await import("@react-native-google-signin/google-signin");
+        const { GoogleSignin } =
+          await import("@react-native-google-signin/google-signin");
         await GoogleSignin.revokeAccess();
         await GoogleSignin.signOut();
       } catch {}
@@ -154,3 +163,4 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ session: null });
   },
 }));
+

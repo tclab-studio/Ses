@@ -200,7 +200,7 @@ export default function BirthDateGenderModal({
         >
           Birth Date (YYYY / MM / DD)
         </Text>
-        <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
           {[
             {
               value: year,
@@ -230,12 +230,13 @@ export default function BirthDateGenderModal({
                 style={
                   {
                     flex,
+                    minWidth: 0,
                     backgroundColor: dark ? "#18181b" : "#f5f5f5",
                     borderWidth: 1.5,
                     borderColor: dark ? "#27272a" : "#e5e5e5",
                     borderRadius: 12,
                     paddingVertical: 14,
-                    paddingHorizontal: 16,
+                    paddingHorizontal: 8,
                     fontSize: 15,
                     fontWeight: "700",
                     color: dark ? "#fff" : "#111",
@@ -247,14 +248,26 @@ export default function BirthDateGenderModal({
             ) : (
               <BottomSheetTextInput
                 key={placeholder}
-                className="bg-neutral-50 dark:bg-zinc-900 border border-neutral-200/70 dark:border-zinc-800 rounded-xl py-3.5 px-4 text-base font-bold text-neutral-900 dark:text-white text-center"
                 value={value}
                 onChangeText={setter}
                 placeholder={placeholder}
                 placeholderTextColor="#a1a1aa"
                 keyboardType="number-pad"
                 maxLength={max}
-                style={{ flex }}
+                style={{
+                  flex,
+                  minWidth: 0,
+                  backgroundColor: dark ? "#18181b" : "#f5f5f5",
+                  borderWidth: 1.5,
+                  borderColor: dark ? "#27272a" : "#e5e5e5",
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  paddingHorizontal: 8,
+                  fontSize: 15,
+                  fontWeight: "700",
+                  color: dark ? "#fff" : "#111",
+                  textAlign: "center",
+                }}
               />
             ),
           )}
@@ -329,17 +342,17 @@ export default function BirthDateGenderModal({
             backgroundColor: "rgba(0,0,0,0.5)",
             alignItems: "center",
             justifyContent: "center",
-            padding: 20,
+            padding: 16,
           }}
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={{
               width: "100%",
-              maxWidth: 460,
+              maxWidth: 400,
               backgroundColor: dark ? "#09090b" : "#fff",
               borderRadius: 24,
-              padding: 28,
+              padding: 24,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 24 },
               shadowOpacity: dark ? 0.5 : 0.15,

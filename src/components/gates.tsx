@@ -61,7 +61,7 @@ export function AuthAndGeoGate() {
       }
     }
     checkOnboardingStatus();
-  }, [isTelegram]);
+  }, [isTelegram, segments[0]]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;

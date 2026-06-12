@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -252,7 +253,7 @@ export function PostVoteSheet({
         toValue: 0,
         damping: 22,
         stiffness: 180,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start();
     } else {
       slideAnim.setValue(300);
@@ -283,81 +284,183 @@ export function PostVoteSheet({
 
   if (!visible) return null;
 
+  if (Platform.OS === "web") {
+    return (
+      <View
+        style={{
+          position: "fixed" as any,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          zIndex: 9999,
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable
+          style={{ position: "absolute" as any, inset: 0 }}
+          onPress={onDone}
+        />
+        <View
+          style={{
+            backgroundColor: "#fff",
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            paddingHorizontal: 20,
+            paddingTop: 20,
+            paddingBottom: 40,
+            maxWidth: 600,
+            width: "100%",
+            alignSelf: "center",
+          }}
+        >
+          <SheetContent
+            confidence={confidence}
+            setConfidence={setConfidence}
+            opinion={opinion}
+            setOpinion={setOpinion}
+            saving={saving}
+            isDark={isDark}
+            colors={colors}
+            onDone={onDone}
+            onSave={handleSave}
+          />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <Modal transparent animationType="none" visible={visible}>
-      <Pressable className="flex-1 bg-black/50" onPress={onDone}>
+      <Pressable
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}
+        onPress={onDone}
+      >
         <Animated.View
-          style={{ transform: [{ translateY: slideAnim }] }}
-          className="absolute bottom-0 left-0 right-0 bg-white dark:bg-neutral-950 rounded-t-3xl px-5 pt-5 pb-10"
+          style={[
+            {
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: "#fff",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 40,
+            },
+            { transform: [{ translateY: slideAnim }] },
+          ]}
         >
           <Pressable>
-            <View className="w-10 h-1 rounded-full bg-neutral-200 dark:bg-neutral-800 self-center mb-5" />
-
-            <ThemedText className="text-lg font-bold tracking-tight mb-1">
-              Your prediction 🎯
-            </ThemedText>
-            <ThemedText className="text-sm text-neutral-400 mb-5">
-              Optional — lock in your take before the results roll in.
-            </ThemedText>
-
-            <SectionLabel>How confident are you?</SectionLabel>
-            <View className="mb-5">
-              <StarRating
-                value={confidence}
-                onChange={setConfidence}
-                isDark={isDark}
-              />
-              {confidence > 0 && (
-                <ThemedText className="text-xs text-neutral-400 mt-2">
-                  {CONFIDENCE_LABELS[confidence]}
-                </ThemedText>
-              )}
-            </View>
-
-            <SectionLabel>What outcome do you predict?</SectionLabel>
-            <TextInput
-              value={opinion}
-              onChangeText={setOpinion}
-              placeholder="I think the result will be... (optional)"
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              maxLength={500}
-              className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-black dark:text-white rounded-2xl px-4 py-3 text-sm"
-              style={{ minHeight: 80, textAlignVertical: "top" }}
+            <SheetContent
+              confidence={confidence}
+              setConfidence={setConfidence}
+              opinion={opinion}
+              setOpinion={setOpinion}
+              saving={saving}
+              isDark={isDark}
+              colors={colors}
+              onDone={onDone}
+              onSave={handleSave}
             />
-            <ThemedText className="text-xs text-neutral-400 text-right mt-1 mb-5">
-              {opinion.length}/500
-            </ThemedText>
-
-            <View className="flex-row gap-3">
-              <Pressable
-                onPress={onDone}
-                className="flex-1 py-3.5 rounded-2xl items-center border border-neutral-200 dark:border-neutral-800 active:opacity-70"
-              >
-                <Text className="text-sm font-semibold text-neutral-500">
-                  Skip
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleSave}
-                disabled={saving}
-                className="flex-1 py-3.5 rounded-2xl items-center bg-black dark:bg-white active:opacity-90"
-              >
-                {saving ? (
-                  <ActivityIndicator
-                    color={isDark ? "#000" : "#fff"}
-                    size="small"
-                  />
-                ) : (
-                  <Text className="text-sm font-semibold text-white dark:text-black">
-                    Save
-                  </Text>
-                )}
-              </Pressable>
-            </View>
           </Pressable>
         </Animated.View>
       </Pressable>
     </Modal>
+  );
+}
+
+function SheetContent({
+  confidence,
+  setConfidence,
+  opinion,
+  setOpinion,
+  saving,
+  isDark,
+  colors,
+  onDone,
+  onSave,
+}: {
+  confidence: number;
+  setConfidence: (v: number) => void;
+  opinion: string;
+  setOpinion: (v: string) => void;
+  saving: boolean;
+  isDark: boolean;
+  colors: (typeof Colors)["light"];
+  onDone: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <View
+        style={{
+          width: 40,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: "#e5e5e5",
+          alignSelf: "center",
+          marginBottom: 20,
+        }}
+      />
+      <ThemedText className="text-lg font-bold tracking-tight mb-1">
+        Your prediction 🎯
+      </ThemedText>
+      <ThemedText className="text-sm text-neutral-400 mb-5">
+        Optional — lock in your take before the results roll in.
+      </ThemedText>
+
+      <SectionLabel>How confident are you?</SectionLabel>
+      <View className="mb-5">
+        <StarRating
+          value={confidence}
+          onChange={setConfidence}
+          isDark={isDark}
+        />
+        {confidence > 0 && (
+          <ThemedText className="text-xs text-neutral-400 mt-2">
+            {CONFIDENCE_LABELS[confidence]}
+          </ThemedText>
+        )}
+      </View>
+
+      <SectionLabel>What outcome do you predict?</SectionLabel>
+      <TextInput
+        value={opinion}
+        onChangeText={setOpinion}
+        placeholder="I think the result will be... (optional)"
+        placeholderTextColor={colors.textSecondary}
+        multiline
+        maxLength={500}
+        className="border border-neutral-200 bg-neutral-50 text-black rounded-2xl px-4 py-3 text-sm"
+        style={{ minHeight: 80, textAlignVertical: "top" }}
+      />
+      <ThemedText className="text-xs text-neutral-400 text-right mt-1 mb-5">
+        {opinion.length}/500
+      </ThemedText>
+
+      <View className="flex-row gap-3">
+        <Pressable
+          onPress={onDone}
+          className="flex-1 py-3.5 rounded-2xl items-center border border-neutral-200 active:opacity-70"
+        >
+          <Text className="text-sm font-semibold text-neutral-500">Skip</Text>
+        </Pressable>
+        <Pressable
+          onPress={onSave}
+          disabled={saving}
+          className="flex-1 py-3.5 rounded-2xl items-center bg-black active:opacity-90"
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text className="text-sm font-semibold text-white">Save</Text>
+          )}
+        </Pressable>
+      </View>
+    </>
   );
 }

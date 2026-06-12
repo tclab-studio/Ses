@@ -35,6 +35,8 @@ const queryClient = new QueryClient({
   },
 });
 
+const isTelegramTarget = process.env.EXPO_PUBLIC_TARGET === "telegram";
+
 function NotificationsBridge() {
   const session = useAuthStore((s) => s.session);
   useNotifications(session?.user?.id ?? null);
@@ -59,6 +61,11 @@ function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (!isTelegramTarget) {
+        setIsTelegramValid(true);
+        return;
+      }
+
       const tg = (window as any).Telegram?.WebApp;
 
       if (tg?.initData) {
@@ -84,7 +91,7 @@ function RootLayout() {
     return null;
   }
 
-  if (Platform.OS === "web" && !isTelegramValid) {
+  if (Platform.OS === "web" && isTelegramTarget && !isTelegramValid) {
     return (
       <View
         style={{
