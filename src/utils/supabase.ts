@@ -83,6 +83,43 @@ const LargeSecureStoreAdapter = {
   },
 };
 
+function getTelegramUserId(): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const tg = (window as any).Telegram?.WebApp;
+    if (!tg?.initDataUnsafe?.user?.id) return null;
+    return String(tg.initDataUnsafe.user.id);
+  } catch {
+    return null;
+  }
+}
+
+const TelegramLocalStorageAdapter = {
+  getItem: (key: string): string | null => {
+    try {
+      const tgId = getTelegramUserId();
+      const scopedKey = tgId ? `tg_${tgId}__${key}` : key;
+      return localStorage.getItem(scopedKey);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      const tgId = getTelegramUserId();
+      const scopedKey = tgId ? `tg_${tgId}__${key}` : key;
+      localStorage.setItem(scopedKey, value);
+    } catch {}
+  },
+  removeItem: (key: string): void => {
+    try {
+      const tgId = getTelegramUserId();
+      const scopedKey = tgId ? `tg_${tgId}__${key}` : key;
+      localStorage.removeItem(scopedKey);
+    } catch {}
+  },
+};
+
 const LocalStorageAdapter = {
   getItem: (key: string): string | null => {
     try {
@@ -105,9 +142,14 @@ const LocalStorageAdapter = {
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
+const isTelegramTarget = process.env.EXPO_PUBLIC_TARGET === "telegram";
 
 const storage =
-  Platform.OS === "web" ? LocalStorageAdapter : LargeSecureStoreAdapter;
+  Platform.OS === "web"
+    ? isTelegramTarget
+      ? TelegramLocalStorageAdapter
+      : LocalStorageAdapter
+    : LargeSecureStoreAdapter;
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
@@ -136,9 +178,22 @@ export const redirectUrl =
 export async function clearAuthStorage(): Promise<void> {
   try {
     if (Platform.OS === "web") {
-      Object.keys(localStorage)
-        .filter((k) => k.includes("supabase") || k.includes("sb-"))
-        .forEach((k) => localStorage.removeItem(k));
+      if (isTelegramTarget) {
+        const tgId = getTelegramUserId();
+        if (tgId) {
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith(`tg_${tgId}__`))
+            .forEach((k) => localStorage.removeItem(k));
+        }
+        Object.keys(localStorage)
+          .filter((k) => k.includes("supabase") || k.includes("sb-"))
+          .filter((k) => !k.match(/^tg_\d+__/))
+          .forEach((k) => localStorage.removeItem(k));
+      } else {
+        Object.keys(localStorage)
+          .filter((k) => k.includes("supabase") || k.includes("sb-"))
+          .forEach((k) => localStorage.removeItem(k));
+      }
       return;
     }
     const keys = ["supabase.auth.token", "sb-access-token", "sb-refresh-token"];

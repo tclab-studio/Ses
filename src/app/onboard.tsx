@@ -1,5 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -326,7 +327,11 @@ export default function OnboardingScreen() {
     if (isNavigating.current) return;
     isNavigating.current = true;
     try {
-      await AsyncStorage.setItem(HAS_LAUNCHED_KEY, "true");
+      if (Platform.OS === "web") {
+        localStorage.setItem(HAS_LAUNCHED_KEY, "true");
+      } else {
+        await AsyncStorage.setItem(HAS_LAUNCHED_KEY, "true");
+      }
     } catch {}
     await new Promise((r) => setTimeout(r, 80));
     if (isMounted.current) {

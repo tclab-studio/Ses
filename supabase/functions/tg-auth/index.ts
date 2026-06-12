@@ -19,7 +19,7 @@ async function validateTelegramInitData(
     if (!authDate) return { valid: false, reason: "missing auth_date" };
 
     const ageSec = Math.floor(Date.now() / 1000) - authDate;
-    if (ageSec > 300) {
+    if (ageSec > 600) {
       return { valid: false, reason: `initData expired (${ageSec}s old)` };
     }
 
@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
     const password = `tg_${tgId}_${botToken.slice(0, 16)}`;
 
     let userId: string;
+    let isNewUser = false;
 
     const { data: created, error: createErr } =
       await admin.auth.admin.createUser({
@@ -157,26 +158,29 @@ Deno.serve(async (req) => {
 
       userId = existing.id;
 
-      const { error: updateErr } = await admin.auth.admin.updateUserById(
-        userId,
-        {
-          password,
+      await admin.auth.admin.updateUserById(userId, {
+        password,
+        user_metadata: {
+          full_name: fullName,
+          avatar_url: tgUser.photo_url ?? null,
+          telegram_id: tgId,
+          telegram_username: username,
+          provider: "telegram",
         },
-      );
-      if (updateErr)
-        return json(
-          { error: `Password reset failed: ${updateErr.message}` },
-          500,
-        );
+      });
     } else {
       userId = created!.user.id;
-
-      await admin.from("profiles").upsert({
-        id: userId,
-        username: username ? username.toLowerCase() : null,
-        updated_at: new Date().toISOString(),
-      });
+      isNewUser = true;
     }
+
+    await admin.from("profiles").upsert(
+      {
+        id: userId,
+        username: isNewUser && username ? username.toLowerCase() : undefined,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id", ignoreDuplicates: false },
+    );
 
     const { data: signInData, error: signInErr } =
       await admin.auth.signInWithPassword({
@@ -192,10 +196,10 @@ Deno.serve(async (req) => {
       access_token: signInData.session.access_token,
       refresh_token: signInData.session.refresh_token,
       user: signInData.session.user,
+      is_new_user: isNewUser,
     });
   } catch (err) {
     console.error("[tg-auth] Unhandled:", err);
     return json({ error: String(err) }, 500);
   }
 });
-

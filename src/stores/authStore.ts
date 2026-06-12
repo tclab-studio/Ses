@@ -1,5 +1,5 @@
 import { syncGeoOnAuth } from "@/utils/geo";
-import { redirectUrl, supabase } from "@/utils/supabase";
+import { clearAuthStorage, redirectUrl, supabase } from "@/utils/supabase";
 import { Session } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import { create } from "zustand";
@@ -27,6 +27,17 @@ async function doGoogleSignIn() {
   const idToken = response.data?.idToken;
   if (!idToken) throw new Error("No idToken returned from Google");
   return { idToken, GoogleSignin, isErrorWithCode, statusCodes };
+}
+
+function getTelegramUserId(): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const tg = (window as any).Telegram?.WebApp;
+    if (!tg?.initDataUnsafe?.user?.id) return null;
+    return String(tg.initDataUnsafe.user.id);
+  } catch {
+    return null;
+  }
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -124,6 +135,21 @@ export const useAuthStore = create<AuthStore>((set) => ({
       const tg = (window as any).Telegram?.WebApp;
       if (!tg?.initData) throw new Error("No Telegram initData");
 
+      const incomingTgId = getTelegramUserId();
+
+      const { data: currentSession } = await supabase.auth.getSession();
+      if (currentSession?.session) {
+        const currentTgId =
+          currentSession.session.user?.user_metadata?.telegram_id;
+        if (currentTgId && incomingTgId && currentTgId !== incomingTgId) {
+          await supabase.auth.signOut();
+          await clearAuthStorage();
+        } else if (currentTgId && incomingTgId && currentTgId === incomingTgId) {
+          set({ loading: false });
+          return;
+        }
+      }
+
       const res = await fetch(
         `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/tg-auth`,
         {
@@ -145,6 +171,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       if (error) throw error;
     } catch (err) {
       console.error("Telegram Sign-In error:", err);
+      set({ loading: false });
     } finally {
       set({ loading: false });
     }
@@ -163,4 +190,3 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ session: null });
   },
 }));
-

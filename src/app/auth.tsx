@@ -1,6 +1,7 @@
 import { GoogleButton } from "@/components/google-button";
 import { useAuth } from "@/hooks/useAuth";
 import { useEnvironment } from "@/hooks/useEnvironment";
+import { useAuthStore } from "@/stores";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import {
@@ -46,6 +47,7 @@ function TelegramButton({
 export default function AuthScreen() {
   const { loading, signInWithGoogle, signInWithTelegram } = useAuth();
   const { isTelegram } = useEnvironment();
+  const session = useAuthStore((s) => s.session);
   const router = useRouter();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -53,6 +55,10 @@ export default function AuthScreen() {
 
   useEffect(() => {
     if (isTelegram) {
+      if (session) {
+        router.replace("/");
+        return;
+      }
       signInWithTelegram();
       return;
     }
@@ -70,7 +76,7 @@ export default function AuthScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [isTelegram]);
+  }, [isTelegram, session]);
 
   if (isTelegram) {
     return (
